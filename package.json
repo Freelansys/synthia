@@ -21,6 +21,9 @@
   "author": "Freelansys",
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "synthia": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

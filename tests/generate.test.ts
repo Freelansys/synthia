@@ -1,56 +1,40 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { parse } from '@iarna/toml'
-import { describe, expect, it, vi, afterEach } from 'vitest'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
 
 import { loadConfig, mergeOptions } from '../src/cli/commands/generate.js'
 
-vi.mock('node:fs')
-vi.mock('node:path', async () => {
-  const actual = await vi.importActual<typeof import('path')>('node:path')
-  return { ...actual, resolve: vi.fn((p: string) => `/resolved/${p}`) }
-})
-vi.mock('@iarna/toml', async () => {
-  const actual = await vi.importActual<typeof import('@iarna/toml')>('@iarna/toml')
-  return { ...actual, parse: vi.fn() }
-})
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
-afterEach(() => {
-  vi.clearAllMocks()
-})
+const propsDir = resolve(__dirname, 'props')
+const configPath = resolve(propsDir, 'config.toml')
+const minimalConfigPath = resolve(propsDir, 'minimal.toml')
 
 describe('loadConfig', () => {
   it('parses a TOML file and returns SpexConfig', async () => {
-    const tomlParse = parse as unknown as ReturnType<typeof vi.fn>
+    const result = loadConfig(configPath)
 
-    tomlParse.mockReturnValue({ target: { language: 'python' } })
-    vi.mocked(readFileSync).mockReturnValue('[target]\nlanguage = "python"')
+    expect(result).toEqual({
+      target: { language: 'typescript', runtime: 'node' },
+      workspace: { spec_dir: './specs', output_dir: './out' },
+    })
+  })
 
-    const result = loadConfig('spex.toml')
+  it('returns empty config for minimal TOML', async () => {
+    const result = loadConfig(minimalConfigPath)
 
-    expect(resolve).toHaveBeenCalledWith('spex.toml')
-    expect(readFileSync).toHaveBeenCalledWith('/resolved/spex.toml', 'utf-8')
-    expect(tomlParse).toHaveBeenCalledWith('[target]\nlanguage = "python"')
-    expect(result).toEqual({ target: { language: 'python' } })
+    expect(result).toEqual({})
   })
 
   it('throws when file does not exist', async () => {
-    vi.mocked(readFileSync).mockImplementation(() => {
-      throw new Error('ENOENT: no such file or directory')
-    })
-
-    expect(() => loadConfig('nonexistent.toml')).toThrow('ENOENT')
+    expect(() => loadConfig('/nonexistent/path.toml')).toThrow()
   })
 
   it('throws on invalid TOML', async () => {
-    const tomlParse = parse as unknown as ReturnType<typeof vi.fn>
+    const invalidPath = resolve(propsDir, 'invalid.toml')
 
-    vi.mocked(readFileSync).mockReturnValue('invalid [[toml')
-    tomlParse.mockImplementation(() => {
-      throw new Error('Unexpected character')
-    })
-
-    expect(() => loadConfig('bad.toml')).toThrow('Unexpected character')
+    expect(() => loadConfig(invalidPath)).toThrow()
   })
 })
 
@@ -101,5 +85,18 @@ describe('mergeOptions', () => {
     )
 
     expect(result).toEqual({ output: './cli-out', target: 'java' })
+  })
+
+  it('merges options from a real config file', async () => {
+    const config = loadConfig(configPath)
+
+    const result1 = mergeOptions(config, {})
+    expect(result1).toEqual({ output: './out', target: 'typescript' })
+
+    const result2 = mergeOptions(config, { output: './cli', target: 'python' })
+    expect(result2).toEqual({ output: './cli', target: 'python' })
+
+    const result3 = mergeOptions(config, { target: 'rust' })
+    expect(result3).toEqual({ output: './out', target: 'rust' })
   })
 })

@@ -1,0 +1,9 @@
+create Todo as (
+  id: string,
+  title: string,
+  completed: bool
+);
+
+create AddTodo as from (title: string) -> Todo select {
+  1. create a todo with the given title
+};

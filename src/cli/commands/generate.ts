@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { parse } from '@iarna/toml'
 import { Command } from 'commander'
+import { loadSpexSpecs } from '../../parse/index.js'
 
 export interface SpexConfig {
   target?: {
@@ -59,5 +60,14 @@ export function registerGenerateCommand(program: Command): void {
       console.log(`Config file: ${spec}`)
       console.log(`Output directory: ${merged.output}`)
       console.log(`Target: ${merged.target}`)
+
+      const specDir = config.workspace?.spec_dir ?? dirname(resolve(spec))
+      const specs = loadSpexSpecs(specDir)
+
+      console.log(`Found ${specs.length} .spex file(s) in ${specDir}`)
+
+      for (const s of specs) {
+        console.log(`  - ${s.filePath}`)
+      }
     })
 }

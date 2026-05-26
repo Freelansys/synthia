@@ -1,0 +1,4 @@
+create Schema as (
+  name: string,
+  version: string
+);

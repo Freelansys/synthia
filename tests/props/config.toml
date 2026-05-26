@@ -1,0 +1,7 @@
+[target]
+language = "typescript"
+runtime = "node"
+
+[workspace]
+spec_dir = "./specs"
+output_dir = "./out"

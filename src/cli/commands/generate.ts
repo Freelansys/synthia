@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, relative, resolve } from 'node:path'
 import { parse } from '@iarna/toml'
 import { Command } from 'commander'
-import { loadSpexSpecs, type ParsedSpexFile } from '../../parse/index.js'
+import { loadSpexSpecsRecursive, type ParsedSpexFile } from '../../parse/index.js'
 
 export interface SpexConfig {
   target?: {
@@ -70,7 +70,8 @@ export function registerGenerateCommand(program: Command): void {
     .argument('[spec]', 'path to Spex specification file', 'spex.toml')
     .option('-o, --output <path>', 'output directory for generated code', './src/generated')
     .option('-t, --target <language>', 'target language/runtime', 'typescript')
-    .action(async (spec: string, options: { output?: string; target?: string }) => {
+    .action((spec: string, options: { output?: string; target?: string }) => {
+      const configDir = dirname(resolve(spec))
       const config = loadConfig(spec)
       const merged = mergeOptions(config, options)
 
@@ -78,12 +79,11 @@ export function registerGenerateCommand(program: Command): void {
       console.log(`Output directory: ${merged.output}`)
       console.log(`Target: ${merged.target}`)
 
-      const specDir = config.workspace?.spec_dir ?? dirname(resolve(spec))
-      const specs = loadSpexSpecs(specDir)
+      const specDir = config.workspace?.spec_dir ?? configDir
+      const specs = loadSpexSpecsRecursive(specDir)
 
       console.log(`Found ${specs.length} .spex file(s) in ${specDir}`)
 
-      const configDir = dirname(resolve(spec))
       const saved = saveAsts(specs, configDir, specDir)
       console.log(`Saved ASTs to ${resolve(configDir, '.synthia')}/`)
       for (const p of saved) {

@@ -1,0 +1,14 @@
+create EmailAddress as from string select {
+  are email addresses
+};
+
+create Password as from string select {
+  - have at least 8 characters
+  - contain at least one upper case character
+  - contain at least one lower case character
+  - contain at least one number character
+  - contain at least one special character
+};
+
+export EmailAddress;
+export Password;

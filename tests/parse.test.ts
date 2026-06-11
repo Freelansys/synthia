@@ -2,7 +2,13 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { findSpexFiles, parseSpexFiles, loadSpexSpecs } from "../src/parse/index.js"
+import {
+  findSpexFiles,
+  parseSpexFiles,
+  loadSpexSpecs,
+  loadSpexSpecsRecursive,
+  resolveImportPath,
+} from '../src/parse/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -10,6 +16,7 @@ const __dirname = dirname(__filename)
 const propsDir = resolve(__dirname, 'props')
 const specsDir = resolve(propsDir, 'specs')
 const emptySpecsDir = resolve(propsDir, 'empty-specs')
+const importsDir = resolve(propsDir, 'imports')
 
 describe('findSpexFiles', () => {
   it('returns only .spex files from the directory', async () => {
@@ -68,5 +75,52 @@ describe('loadSpexSpecs', () => {
 
   it('throws on directory read failure', async () => {
     expect(() => loadSpexSpecs('/nonexistent/path')).toThrow()
+  })
+})
+
+describe('resolveImportPath', () => {
+  it('resolves a relative source path against the importing file', async () => {
+    const result = resolveImportPath('/project/specs/models/user.spex', 'types.spex')
+    expect(result).toBe('/project/specs/models/types.spex')
+  })
+
+  it('resolves a parent-relative source path', async () => {
+    const result = resolveImportPath('/project/specs/sub/helper.spex', '../types.spex')
+    expect(result).toBe('/project/specs/types.spex')
+  })
+
+  it('resolves an absolute source path', async () => {
+    const result = resolveImportPath('/project/specs/models/user.spex', '/other/types.spex')
+    expect(result).toBe('/other/types.spex')
+  })
+})
+
+describe('loadSpexSpecsRecursive', () => {
+  it('parses entry files and their imports', async () => {
+    const result = loadSpexSpecsRecursive(importsDir)
+
+    expect(result).toHaveLength(3)
+    const paths = result.map((p) => p.filePath).sort()
+    expect(paths).toContain(resolve(importsDir, 'main.spex'))
+    expect(paths).toContain(resolve(importsDir, 'types.spex'))
+    expect(paths).toContain(resolve(importsDir, 'sub/helper.spex'))
+  })
+
+  it('does not duplicate files imported by multiple entry points', async () => {
+    const result = loadSpexSpecsRecursive(importsDir)
+    const paths = result.map((p) => p.filePath)
+    const unique = new Set(paths)
+
+    expect(unique.size).toBe(paths.length)
+  })
+
+  it('returns empty array for a directory with no .spex files', async () => {
+    const result = loadSpexSpecsRecursive(emptySpecsDir)
+
+    expect(result).toEqual([])
+  })
+
+  it('throws when a directory does not exist', async () => {
+    expect(() => loadSpexSpecsRecursive('/nonexistent/path')).toThrow()
   })
 })

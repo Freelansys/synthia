@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, relative, resolve } from 'node:path'
 import { parse } from '@iarna/toml'
 import { Command } from 'commander'
 import { loadSpexSpecs, type ParsedSpexFile } from '../../parse/index.js'
@@ -46,14 +46,17 @@ export function mergeOptions(
   }
 }
 
-export function saveAsts(specs: ParsedSpexFile[], configDir: string): string[] {
+export function saveAsts(specs: ParsedSpexFile[], configDir: string, specDir: string): string[] {
   const synthiaDir = resolve(configDir, '.synthia')
   mkdirSync(synthiaDir, { recursive: true })
 
   const paths: string[] = []
   for (const spec of specs) {
+    const rel = dirname(relative(specDir, spec.filePath))
+    const dir = resolve(synthiaDir, rel)
+    mkdirSync(dir, { recursive: true })
     const name = basename(spec.filePath, '.spex') + '.json'
-    const outPath = resolve(synthiaDir, name)
+    const outPath = resolve(dir, name)
     writeFileSync(outPath, JSON.stringify(spec, null, 2), 'utf-8')
     paths.push(outPath)
   }
@@ -81,7 +84,7 @@ export function registerGenerateCommand(program: Command): void {
       console.log(`Found ${specs.length} .spex file(s) in ${specDir}`)
 
       const configDir = dirname(resolve(spec))
-      const saved = saveAsts(specs, configDir)
+      const saved = saveAsts(specs, configDir, specDir)
       console.log(`Saved ASTs to ${resolve(configDir, '.synthia')}/`)
       for (const p of saved) {
         console.log(`  - ${p}`)

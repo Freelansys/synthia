@@ -1,0 +1,9 @@
+import EmailAddress from "types.spex";
+import Password from "types.spex";
+
+create SignUp as from (email: EmailAddress, pass: Password) -> string select {
+  1. check the user doesn't exist
+  2. throw an error if the user exists
+  3. add the user to the User table
+  4. return the id of the newly created user
+};

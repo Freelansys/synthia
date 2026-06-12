@@ -22,7 +22,7 @@ describe('findSpexFiles', () => {
   it('returns only .spex files from the directory', async () => {
     const result = findSpexFiles(specsDir)
 
-    expect(result).toHaveLength(3)
+    expect(result).toHaveLength(4)
     expect(result.every((p) => p.endsWith('.spex'))).toBe(true)
   })
 
@@ -64,7 +64,7 @@ describe('loadSpexSpecs', () => {
   it('finds and parses all .spex files in a directory', async () => {
     const result = loadSpexSpecs(specsDir)
 
-    expect(result).toHaveLength(3)
+    expect(result).toHaveLength(4)
   })
 
   it('returns empty array when no .spex files exist', async () => {

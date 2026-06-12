@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, relative, resolve } from 'node:path'
 import { parse } from '@iarna/toml'
 import { Command } from 'commander'
+import { logger } from '../../logger.js'
 import { loadSpexSpecsRecursive, type ParsedSpexFile } from '../../parse/index.js'
 import { Workspace } from '../../workspace/index.js'
 
@@ -72,26 +73,27 @@ export function registerGenerateCommand(program: Command): void {
     .option('-o, --output <path>', 'output directory for generated code', './src/generated')
     .option('-t, --target <language>', 'target language/runtime', 'typescript')
     .action((spec: string, options: { output?: string; target?: string }) => {
-      const configDir = dirname(resolve(spec))
-      const config = loadConfig(spec)
-      const merged = mergeOptions(config, options)
+      try {
+        const configDir = dirname(resolve(spec))
+        const config = loadConfig(spec)
+        const merged = mergeOptions(config, options)
 
-      console.log(`Config file: ${spec}`)
-      console.log(`Output directory: ${merged.output}`)
-      console.log(`Target: ${merged.target}`)
+        logger.info(`config file: ${spec}`)
+        logger.info(`output directory: ${merged.output}`)
+        logger.info(`target: ${merged.target}`)
 
-      const specDir = config.workspace?.spec_dir ?? configDir
-      const specs = loadSpexSpecsRecursive(specDir)
+        const specDir = config.workspace?.spec_dir ?? configDir
+        const specs = loadSpexSpecsRecursive(specDir)
+        const workspace = new Workspace(specs)
 
-      console.log(`Found ${specs.length} .spex file(s) in ${specDir}`)
-
-      const workspace = new Workspace(specs)
-      console.log(`Workspace: ${workspace.objects.size} object(s)`)
-
-      const saved = saveAsts(specs, configDir, specDir)
-      console.log(`Saved ASTs to ${resolve(configDir, '.synthia')}/`)
-      for (const p of saved) {
-        console.log(`  - ${p}`)
+        const saved = saveAsts(specs, configDir, specDir)
+        logger.success(`saved ASTs to ${resolve(configDir, '.synthia')}/`)
+        for (const p of saved) {
+          logger.log(`  - ${p}`)
+        }
+      } catch (err) {
+        logger.error(`generate failed: ${(err as Error).message}`)
+        process.exit(1)
       }
     })
 }

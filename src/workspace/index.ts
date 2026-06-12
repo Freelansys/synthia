@@ -4,6 +4,7 @@ import {
   type PackageDeclaration,
 } from 'spex-parser'
 import { type ParsedSpexFile } from '../parse/index.js'
+import { logger } from '../logger.js'
 
 export const BUILTIN_NAMESPACE = 'builtin'
 
@@ -36,6 +37,9 @@ export class Workspace {
       for (const decl of spec.ast.declarations) {
         if (decl.kind === 'ObjectDeclaration') {
           const id = objectId(spec.filePath, decl.name)
+          if (this.objects.has(id)) {
+            logger.warn(`duplicate object declaration: ${decl.name} in ${spec.filePath}`)
+          }
           this.objects.set(id, decl)
           fileScope.set(decl.name, id)
         } else if (decl.kind === 'GenerateDeclaration' || decl.kind === 'PackageDeclaration') {
@@ -45,6 +49,10 @@ export class Workspace {
 
       this.scopes.set(spec.filePath, fileScope)
     }
+
+    logger.info(
+      `workspace: ${this.objects.size} object(s), ${this.entryPoints.length} entry point(s)`
+    )
   }
 
   getObject(id: string): ObjectDeclaration | undefined {

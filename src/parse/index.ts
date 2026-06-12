@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { parseToAst, type SpexFile } from 'spex-parser'
+import { logger } from '../logger.js'
 
 export interface ParsedSpexFile {
   filePath: string
@@ -30,9 +31,15 @@ export function findSpexFiles(specDir: string): string[] {
 }
 
 export function parseSingleSpexFile(filePath: string): ParsedSpexFile {
-  return {
-    filePath,
-    ast: parseToAst(readFileSync(filePath, 'utf-8')),
+  logger.debug(`parsing ${filePath}`)
+  try {
+    return {
+      filePath,
+      ast: parseToAst(readFileSync(filePath, 'utf-8')),
+    }
+  } catch (err) {
+    logger.error(`failed to parse ${filePath}: ${(err as Error).message}`)
+    throw err
   }
 }
 
@@ -42,6 +49,7 @@ export function parseSpexFiles(filePaths: string[]): ParsedSpexFile[] {
 
 export function loadSpexSpecs(specDir: string): ParsedSpexFile[] {
   const files = findSpexFiles(specDir)
+  logger.info(`found ${files.length} .spex file(s) in ${specDir}`)
   return parseSpexFiles(files)
 }
 
@@ -51,6 +59,7 @@ export function resolveImportPath(importingFile: string, source: string): string
 
 export function loadSpexSpecsRecursive(specDir: string): ParsedSpexFile[] {
   const entryFiles = findSpexFiles(specDir)
+  logger.info(`found ${entryFiles.length} entry .spex file(s) in ${specDir}`)
   const visited = new Set<string>()
   const result: ParsedSpexFile[] = []
 
@@ -58,6 +67,7 @@ export function loadSpexSpecsRecursive(specDir: string): ParsedSpexFile[] {
     collectWithImports(file, visited, result)
   }
 
+  logger.success(`loaded ${result.length} .spex file(s) (including imports)`)
   return result
 }
 
@@ -70,13 +80,17 @@ function collectWithImports(
   if (visited.has(resolved)) return
   visited.add(resolved)
 
-  const parsed = parseSingleSpexFile(resolved)
-  result.push(parsed)
+  try {
+    const parsed = parseSingleSpexFile(resolved)
+    result.push(parsed)
 
-  for (const decl of parsed.ast.declarations) {
-    if (decl.kind === 'ImportDeclaration') {
-      const importPath = resolveImportPath(resolved, decl.source)
-      collectWithImports(importPath, visited, result)
+    for (const decl of parsed.ast.declarations) {
+      if (decl.kind === 'ImportDeclaration') {
+        const importPath = resolveImportPath(resolved, decl.source)
+        collectWithImports(importPath, visited, result)
+      }
     }
+  } catch (err) {
+    logger.warn(`skipping ${resolved} due to parse error`)
   }
 }

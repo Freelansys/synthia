@@ -1,6 +1,7 @@
 import { type ObjectExpression } from 'spex-parser'
 import { Workspace } from './index.js'
 import { DirectedGraph } from 'graphology'
+import { logger } from '../logger.js'
 
 function collectExpressionRefs(expr: ObjectExpression, refs: string[]): void {
   switch (expr.kind) {
@@ -37,6 +38,7 @@ export function buildDependencyGraph(workspace: Workspace) {
     graph.addNode(id)
   }
 
+  let edgeCount = 0
   for (const [sourceId, decl] of workspace.allObjects()) {
     const refs: string[] = []
     collectExpressionRefs(decl.object, refs)
@@ -49,9 +51,11 @@ export function buildDependencyGraph(workspace: Workspace) {
       if (targetId && targetId !== sourceId && !seen.has(targetId)) {
         seen.add(targetId)
         graph.addEdge(sourceId, targetId)
+        edgeCount++
       }
     }
   }
 
+  logger.info(`dependency graph: ${graph.order} node(s), ${edgeCount} edge(s)`)
   return graph
 }

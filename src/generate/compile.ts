@@ -78,6 +78,9 @@ export function compileEntryPoint(
 
       logger.info(`  generating ${id}`)
       mkdirSync(cacheDir, { recursive: true })
+
+      //TODO: Generate artifact
+
       const payload = JSON.stringify({ objectId: id, declaration: decl }, null, 2)
       writeFileSync(artifactPath, payload, 'utf-8')
 

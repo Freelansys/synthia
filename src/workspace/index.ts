@@ -20,10 +20,13 @@ function builtinDeclaration(name: string): ObjectDeclaration {
 
 export type EntryDeclaration = GenerateDeclaration | PackageDeclaration
 
+export type ArtifactCache = Map<string, string>
+
 export class Workspace {
   readonly objects: Map<string, ObjectDeclaration> = new Map()
   readonly scopes: Map<string, Map<string, string>> = new Map()
   readonly entryPoints: Array<{ filePath: string; declaration: EntryDeclaration }> = []
+  readonly artifactCache: ArtifactCache = new Map()
 
   constructor(specs: ParsedSpexFile[]) {
     for (const name of BUILTIN_TYPES) {

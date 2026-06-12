@@ -48,6 +48,8 @@
     "consola": "^3.4.2",
     "graphology": "^0.26.0",
     "graphology-components": "^1.5.4",
+    "graphology-dag": "^0.4.1",
+    "graphology-operators": "^1.6.1",
     "spex-parser": "^0.1.4"
   }
 }

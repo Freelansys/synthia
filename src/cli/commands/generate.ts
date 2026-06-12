@@ -3,6 +3,7 @@ import { basename, dirname, relative, resolve } from 'node:path'
 import { parse } from '@iarna/toml'
 import { Command } from 'commander'
 import { logger } from '../../logger.js'
+import { compileEntryPoint } from '../../generate/compile.js'
 import { loadSpexSpecsRecursive, type ParsedSpexFile } from '../../parse/index.js'
 import { Workspace } from '../../workspace/index.js'
 import { buildDependencyGraph, computeSCC, condensationGraph } from '../../workspace/graph.js'
@@ -88,9 +89,23 @@ export function registerGenerateCommand(program: Command): void {
         const workspace = new Workspace(specs)
 
         const depGraph = buildDependencyGraph(workspace)
-        const sccs = computeSCC(depGraph)
-        const condGraph = condensationGraph(depGraph, sccs)
-        
+        const scc = computeSCC(depGraph)
+        const cg = condensationGraph(depGraph, scc)
+
+        const outputDir = resolve(merged.output)
+        mkdirSync(outputDir, { recursive: true })
+
+        const cacheDir = resolve(configDir, '.synthia')
+
+        const allArtifacts: string[] = []
+        for (const entryPoint of workspace.entryPoints) {
+          const artifacts = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
+          allArtifacts.push(...artifacts)
+        }
+
+        logger.info(
+          `generated ${allArtifacts.length} artifact(s) across ${workspace.entryPoints.length} entry point(s)`
+        )
       } catch (err) {
         logger.error(`generate failed: ${(err as Error).message}`)
         process.exit(1)

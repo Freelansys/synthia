@@ -1,0 +1,5 @@
+generate GenerateAPI;
+
+package executable MyExecutable as (app: string) -> string;
+
+package module MyModule as string;

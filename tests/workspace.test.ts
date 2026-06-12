@@ -2,7 +2,13 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
-import { Workspace, objectId, BUILTIN_NAMESPACE, BUILTIN_TYPES } from '../src/workspace/index.js'
+import {
+  Workspace,
+  objectId,
+  BUILTIN_NAMESPACE,
+  BUILTIN_TYPES,
+  type EntryDeclaration,
+} from '../src/workspace/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -75,6 +81,58 @@ describe('Workspace', () => {
     entries.forEach(([id, decl]) => {
       expect(id).toMatch(/^file:\/\//)
       expect(decl.kind).toBe('ObjectDeclaration')
+    })
+  })
+
+  it('is empty when no specs have entry points', async () => {
+    const workspace = new Workspace([])
+    expect(workspace.entryPoints).toHaveLength(0)
+  })
+
+  it('collects generate and package declarations as entry points', async () => {
+    const workspace = new Workspace(loadSpexSpecs(specsDir))
+
+    expect(workspace.entryPoints).toHaveLength(3)
+  })
+
+  it('entry points reference the correct file', async () => {
+    const workspace = new Workspace(loadSpexSpecs(specsDir))
+    const entryPath = resolve(specsDir, 'entry.spex')
+
+    for (const ep of workspace.entryPoints) {
+      expect(ep.filePath).toBe(entryPath)
+    }
+  })
+
+  it('distinguishes generate from package entry points', async () => {
+    const workspace = new Workspace(loadSpexSpecs(specsDir))
+    const entryPath = resolve(specsDir, 'entry.spex')
+
+    const generates = workspace.entryPoints.filter(
+      (ep): ep is { filePath: string; declaration: EntryDeclaration } =>
+        ep.declaration.kind === 'GenerateDeclaration'
+    )
+    const packages = workspace.entryPoints.filter(
+      (ep): ep is { filePath: string; declaration: EntryDeclaration } =>
+        ep.declaration.kind === 'PackageDeclaration'
+    )
+
+    expect(generates).toHaveLength(1)
+    expect(generates[0].declaration.kind).toBe('GenerateDeclaration')
+    expect(generates[0].declaration.name).toBe('GenerateAPI')
+    expect(generates[0].filePath).toBe(entryPath)
+
+    expect(packages).toHaveLength(2)
+    expect(packages[0].declaration.kind).toBe('PackageDeclaration')
+    expect(packages[0].declaration).toMatchObject({
+      kind: 'PackageDeclaration',
+      name: 'MyExecutable',
+      packageType: 'EXECUTABLE',
+    })
+    expect(packages[1].declaration).toMatchObject({
+      kind: 'PackageDeclaration',
+      name: 'MyModule',
+      packageType: 'MODULE',
     })
   })
 })

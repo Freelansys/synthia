@@ -73,15 +73,14 @@ export function compileEntryPoint(
       const decl = workspace.getObject(id)
       if (!decl) continue
 
-      const cached = cache.get(id)
-      if (cached) {
-        artifacts.push(cached)
+      const hash = objectHash(decl)
+      const artifactPath = resolve(cacheDir, `obj-${hash}.json`)
+
+      if (cache.get(id) === artifactPath) {
+        artifacts.push(artifactPath)
         logger.debug(`cache hit for ${id}`)
         continue
       }
-
-      const hash = objectHash(decl)
-      const artifactPath = resolve(cacheDir, `obj-${hash}.json`)
 
       try {
         readFileSync(artifactPath, 'utf-8')

@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { loadSpexSpecs } from '../src/parse/index.js'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { DirectedGraph } from 'graphology'
+import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
 import { Workspace, objectId } from '../src/workspace/index.js'
 import { buildDependencyGraph } from '../src/workspace/graph.js'
 
@@ -10,41 +11,81 @@ const __dirname = dirname(__filename)
 
 const propsDir = resolve(__dirname, 'props')
 const specsDir = resolve(propsDir, 'specs')
+const importsDir = resolve(propsDir, 'imports')
 
 describe('buildDependencyGraph', () => {
-  it('includes all workspace objects as nodes', async () => {
-    const workspace = new Workspace(loadSpexSpecs(specsDir))
-    const graph = buildDependencyGraph(workspace)
+  let workspace: Workspace
+  let graph: DirectedGraph
 
+  beforeAll(() => {
+    workspace = new Workspace(loadSpexSpecs(specsDir))
+    graph = buildDependencyGraph(workspace)
+  })
+
+  it('includes all workspace objects as nodes', () => {
     expect(graph.order).toBe(workspace.objects.size)
   })
 
-  it('creates edges for NamedObject references', async () => {
-    const workspace = new Workspace(loadSpexSpecs(specsDir))
-    const graph = buildDependencyGraph(workspace)
-
-    // AddTodo references Todo so there should be an edge
+  it('creates edges for NamedObject references', () => {
     const addTodoId = objectId(resolve(specsDir, 'model.spex'), 'AddTodo')
     const todoId = objectId(resolve(specsDir, 'model.spex'), 'Todo')
 
     expect(graph.hasEdge(addTodoId, todoId)).toBe(true)
   })
 
-  it('does not create self-loop edges', async () => {
-    const workspace = new Workspace(loadSpexSpecs(specsDir))
-    const graph = buildDependencyGraph(workspace)
-
+  it('does not create self-loop edges', () => {
     for (const [id] of workspace.allObjects()) {
       expect(graph.hasEdge(id, id)).toBe(false)
     }
   })
 
-  it('creates no outgoing edges for objects with no deps', async () => {
-    const workspace = new Workspace(loadSpexSpecs(specsDir))
-    const graph = buildDependencyGraph(workspace)
-
-    // Built-ins like string have no deps
+  it('creates no outgoing edges for objects with no deps', () => {
     expect(graph.outDegree(objectId('builtin', 'string'))).toBe(0)
     expect(graph.outDegree(objectId('builtin', 'number'))).toBe(0)
+  })
+})
+
+describe('buildDependencyGraph from imports', () => {
+  let workspace: Workspace
+  let graph: DirectedGraph
+  let signUpId: string
+  let emailId: string
+  let passwordId: string
+  let stringId: string
+
+  beforeAll(() => {
+    workspace = new Workspace(loadSpexSpecsRecursive(importsDir))
+    graph = buildDependencyGraph(workspace)
+    signUpId = objectId(resolve(importsDir, 'main.spex'), 'SignUp')
+    emailId = objectId(resolve(importsDir, 'types.spex'), 'EmailAddress')
+    passwordId = objectId(resolve(importsDir, 'types.spex'), 'Password')
+    stringId = objectId('builtin', 'string')
+  })
+
+  it('includes all objects from imported files as nodes', () => {
+    expect(graph.hasNode(signUpId)).toBe(true)
+    expect(graph.hasNode(emailId)).toBe(true)
+    expect(graph.hasNode(passwordId)).toBe(true)
+    expect(graph.order).toBe(workspace.objects.size)
+  })
+
+  it('creates edges for cross-file references', () => {
+    expect(graph.hasEdge(signUpId, emailId)).toBe(true)
+    expect(graph.hasEdge(signUpId, passwordId)).toBe(true)
+  })
+
+  it('creates edges to built-in types from imported files', () => {
+    expect(graph.hasEdge(emailId, stringId)).toBe(true)
+    expect(graph.hasEdge(passwordId, stringId)).toBe(true)
+  })
+
+  it('resolves names within file scope first', () => {
+    expect(graph.hasEdge(signUpId, stringId)).toBe(true)
+  })
+
+  it('does not create self-loop edges for imports workspace', () => {
+    for (const [id] of workspace.allObjects()) {
+      expect(graph.hasEdge(id, id)).toBe(false)
+    }
   })
 })

@@ -2,7 +2,6 @@ import { type ObjectExpression } from 'spex-parser'
 import { Workspace } from './index.js'
 import { DirectedGraph } from 'graphology'
 
-
 function collectExpressionRefs(expr: ObjectExpression, refs: string[]): void {
   switch (expr.kind) {
     case 'NamedObject':
@@ -42,9 +41,11 @@ export function buildDependencyGraph(workspace: Workspace) {
     const refs: string[] = []
     collectExpressionRefs(decl.object, refs)
 
+    const filePath = sourceId.startsWith('file://') ? sourceId.slice(7).split('::')[0] : undefined
+
     const seen = new Set<string>()
     for (const name of refs) {
-      const targetId = workspace.resolveName(name)
+      const targetId = workspace.resolveName(name, filePath)
       if (targetId && targetId !== sourceId && !seen.has(targetId)) {
         seen.add(targetId)
         graph.addEdge(sourceId, targetId)

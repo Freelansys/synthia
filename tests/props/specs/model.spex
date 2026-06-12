@@ -1,3 +1,5 @@
+import Schema from "schema.spex";
+
 create Todo as (
   id: string,
   title: string,

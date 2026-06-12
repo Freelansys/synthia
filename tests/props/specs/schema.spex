@@ -2,3 +2,5 @@ create Schema as (
   name: string,
   version: string
 );
+
+export Schema;

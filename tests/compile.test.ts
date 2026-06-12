@@ -4,8 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs } from '../src/parse/index.js'
 import { Workspace } from '../src/workspace/index.js'
-import { buildDependencyGraph, computeSCC, condensationGraph, SCCResult } from '../src/workspace/graph.js'
-import { type ArtifactCache } from '../src/workspace/index.js'
+import {
+  buildDependencyGraph,
+  computeSCC,
+  condensationGraph,
+  SCCResult,
+} from '../src/workspace/graph.js'
 import { extractSubgraph, topologicalSort, compileEntryPoint } from '../src/generate/compile.js'
 import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -136,7 +140,6 @@ describe('compileEntryPoint', () => {
   })
 
   it('returns artifacts for each object in the subgraph', () => {
-    workspace.artifactCache.clear()
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')
     expect(entryPoint).toBeDefined()
 
@@ -151,33 +154,29 @@ describe('compileEntryPoint', () => {
     }
   })
 
-  it('populates the cache with objectId-to-artifact mappings', () => {
-    workspace.artifactCache.clear()
-    const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')!
-
-    const artifacts = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
-    const cache: ArtifactCache = workspace.artifactCache
-
-    expect(cache.size).toBeGreaterThan(0)
-    for (const artifact of artifacts) {
-      const content = JSON.parse(readFileSync(artifact, 'utf-8'))
-      expect(cache.get(content.objectId)).toBe(artifact)
-    }
-  })
-
-  it('reuses cached artifacts on second call', () => {
-    workspace.artifactCache.clear()
+  it('reuses cached artifacts on second call via existsSync', () => {
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')!
 
     const first = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
     const second = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
 
     expect(second).toEqual(first)
-    expect(workspace.artifactCache.size).toBe(first.length)
+  })
+
+  it('regenerates artifact when file is deleted from disk', () => {
+    const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')!
+
+    const first = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
+
+    const deleted = first[0]
+    rmSync(deleted)
+
+    const second = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
+    expect(second).toEqual(first)
+    expect(existsSync(deleted)).toBe(true)
   })
 
   it('returns empty array for unknown entry point name', () => {
-    workspace.artifactCache.clear()
     const fakeEntry = {
       filePath: resolve(specsDir, 'entry.spex'),
       declaration: { kind: 'GenerateDeclaration' as const, name: 'NonExistent' },

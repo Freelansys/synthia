@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
-import { Workspace, objectId } from '../src/workspace/index.js'
+import { Workspace, objectId, BUILTIN_NAMESPACE, BUILTIN_TYPES } from '../src/workspace/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -19,30 +19,39 @@ describe('objectId', () => {
 })
 
 describe('Workspace', () => {
-  it('collects all ObjectDeclarations from parsed specs', async () => {
+  it('includes built-in types', async () => {
+    const workspace = new Workspace([])
+
+    for (const name of BUILTIN_TYPES) {
+      const id = objectId(BUILTIN_NAMESPACE, name)
+      const decl = workspace.getObject(id)
+      expect(decl?.kind).toBe('ObjectDeclaration')
+      expect(decl?.name).toBe(name)
+    }
+  })
+
+  it('collects all ObjectDeclarations from parsed specs plus built-ins', async () => {
     const specs = loadSpexSpecs(specsDir)
     const workspace = new Workspace(specs)
 
-    expect(workspace.objects.size).toBe(4)
+    expect(workspace.objects.size).toBe(4 + BUILTIN_TYPES.length)
 
     const todoId = objectId(resolve(specsDir, 'model.spex'), 'Todo')
     const addTodoId = objectId(resolve(specsDir, 'model.spex'), 'AddTodo')
     const schemaId = objectId(resolve(specsDir, 'schema.spex'), 'Schema')
     const validId = objectId(resolve(specsDir, 'valid.spex'), 'Valid')
 
-    expect(workspace.getObject(todoId)?.kind).toBe('ObjectDeclaration')
     expect(workspace.getObject(todoId)?.name).toBe('Todo')
-
     expect(workspace.getObject(addTodoId)?.name).toBe('AddTodo')
     expect(workspace.getObject(schemaId)?.name).toBe('Schema')
     expect(workspace.getObject(validId)?.name).toBe('Valid')
   })
 
-  it('collects objects from recursively loaded specs', async () => {
+  it('collects objects from recursively loaded specs plus built-ins', async () => {
     const specs = loadSpexSpecsRecursive(importsDir)
     const workspace = new Workspace(specs)
 
-    expect(workspace.objects.size).toBe(3)
+    expect(workspace.objects.size).toBe(3 + BUILTIN_TYPES.length)
 
     const signUpId = objectId(resolve(importsDir, 'main.spex'), 'SignUp')
     const emailId = objectId(resolve(importsDir, 'types.spex'), 'EmailAddress')
@@ -58,11 +67,11 @@ describe('Workspace', () => {
     expect(workspace.getObject('file:///none.spex::Nope')).toBeUndefined()
   })
 
-  it('allObjects yields all entries', async () => {
-    const workspace = new Workspace(loadSpexSpecs(specsDir))
+  it('allObjects yields all entries including built-ins', async () => {
+    const workspace = new Workspace([])
     const entries = Array.from(workspace.allObjects())
 
-    expect(entries).toHaveLength(4)
+    expect(entries).toHaveLength(BUILTIN_TYPES.length)
     entries.forEach(([id, decl]) => {
       expect(id).toMatch(/^file:\/\//)
       expect(decl.kind).toBe('ObjectDeclaration')

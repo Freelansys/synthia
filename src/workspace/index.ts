@@ -1,4 +1,8 @@
-import { type ObjectDeclaration } from 'spex-parser'
+import {
+  type GenerateDeclaration,
+  type ObjectDeclaration,
+  type PackageDeclaration,
+} from 'spex-parser'
 import { type ParsedSpexFile } from '../parse/index.js'
 
 export const BUILTIN_NAMESPACE = 'builtin'
@@ -13,9 +17,12 @@ function builtinDeclaration(name: string): ObjectDeclaration {
   return { kind: 'ObjectDeclaration', name, object: { kind: 'NamedObject', name } }
 }
 
+export type EntryDeclaration = GenerateDeclaration | PackageDeclaration
+
 export class Workspace {
   readonly objects: Map<string, ObjectDeclaration> = new Map()
   readonly scopes: Map<string, Map<string, string>> = new Map()
+  readonly entryPoints: Array<{ filePath: string; declaration: EntryDeclaration }> = []
 
   constructor(specs: ParsedSpexFile[]) {
     for (const name of BUILTIN_TYPES) {
@@ -31,6 +38,8 @@ export class Workspace {
           const id = objectId(spec.filePath, decl.name)
           this.objects.set(id, decl)
           fileScope.set(decl.name, id)
+        } else if (decl.kind === 'GenerateDeclaration' || decl.kind === 'PackageDeclaration') {
+          this.entryPoints.push({ filePath: spec.filePath, declaration: decl })
         }
       }
 

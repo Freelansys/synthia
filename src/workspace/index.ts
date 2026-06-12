@@ -36,6 +36,13 @@ export class Workspace {
     return this.objects.get(id)
   }
 
+  resolveName(name: string): string | undefined {
+    for (const [id, decl] of this.objects) {
+      if (decl.name === name) return id
+    }
+    return undefined
+  }
+
   *allObjects(): IterableIterator<[string, ObjectDeclaration]> {
     yield* this.objects.entries()
   }

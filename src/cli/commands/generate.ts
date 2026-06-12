@@ -3,6 +3,7 @@ import { basename, dirname, relative, resolve } from 'node:path'
 import { parse } from '@iarna/toml'
 import { Command } from 'commander'
 import { loadSpexSpecsRecursive, type ParsedSpexFile } from '../../parse/index.js'
+import { Workspace } from '../../workspace/index.js'
 
 export interface SpexConfig {
   target?: {
@@ -83,6 +84,9 @@ export function registerGenerateCommand(program: Command): void {
       const specs = loadSpexSpecsRecursive(specDir)
 
       console.log(`Found ${specs.length} .spex file(s) in ${specDir}`)
+
+      const workspace = new Workspace(specs)
+      console.log(`Workspace: ${workspace.objects.size} object(s)`)
 
       const saved = saveAsts(specs, configDir, specDir)
       console.log(`Saved ASTs to ${resolve(configDir, '.synthia')}/`)

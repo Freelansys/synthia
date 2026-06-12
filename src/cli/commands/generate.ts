@@ -5,6 +5,7 @@ import { Command } from 'commander'
 import { logger } from '../../logger.js'
 import { loadSpexSpecsRecursive, type ParsedSpexFile } from '../../parse/index.js'
 import { Workspace } from '../../workspace/index.js'
+import { buildDependencyGraph, computeSCC, condensationGraph } from '../../workspace/graph.js'
 
 export interface SpexConfig {
   target?: {
@@ -86,11 +87,10 @@ export function registerGenerateCommand(program: Command): void {
         const specs = loadSpexSpecsRecursive(specDir)
         const workspace = new Workspace(specs)
 
-        const saved = saveAsts(specs, configDir, specDir)
-        logger.success(`saved ASTs to ${resolve(configDir, '.synthia')}/`)
-        for (const p of saved) {
-          logger.log(`  - ${p}`)
-        }
+        const depGraph = buildDependencyGraph(workspace)
+        const sccs = computeSCC(depGraph)
+        const condGraph = condensationGraph(depGraph, sccs)
+        
       } catch (err) {
         logger.error(`generate failed: ${(err as Error).message}`)
         process.exit(1)

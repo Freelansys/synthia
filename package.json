@@ -47,6 +47,7 @@
     "commander": "^14.0.3",
     "consola": "^3.4.2",
     "graphology": "^0.26.0",
+    "graphology-components": "^1.5.4",
     "spex-parser": "^0.1.4"
   }
 }

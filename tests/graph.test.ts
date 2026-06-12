@@ -4,7 +4,12 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
 import { Workspace, objectId } from '../src/workspace/index.js'
-import { buildDependencyGraph, computeSCC, condensationGraph } from '../src/workspace/graph.js'
+import {
+  buildDependencyGraph,
+  computeSCC,
+  condensationGraph,
+  SCCResult,
+} from '../src/workspace/graph.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -91,7 +96,7 @@ describe('buildDependencyGraph from imports', () => {
 })
 
 describe('computeSCC', () => {
-  let importsSCC: Map<string, number>
+  let importsSCC: SCCResult
   let importsGraph: DirectedGraph
 
   beforeAll(() => {
@@ -107,9 +112,9 @@ describe('computeSCC', () => {
     graph.addEdge('a', 'b')
 
     const scc = computeSCC(graph)
-    expect(scc.size).toBe(2)
-    expect(scc.has('a')).toBe(true)
-    expect(scc.has('b')).toBe(true)
+    expect(scc.nodeToComp.size).toBe(2)
+    expect(scc.nodeToComp.has('a')).toBe(true)
+    expect(scc.nodeToComp.has('b')).toBe(true)
   })
 
   it('puts nodes in a cycle in the same component', () => {
@@ -120,7 +125,7 @@ describe('computeSCC', () => {
     graph.addEdge('b', 'a')
 
     const scc = computeSCC(graph)
-    expect(scc.get('a')).toBe(scc.get('b'))
+    expect(scc.getComp('a')).toBe(scc.getComp('b'))
   })
 
   it('puts acyclic nodes in different components', () => {
@@ -130,13 +135,13 @@ describe('computeSCC', () => {
     graph.addEdge('a', 'b')
 
     const scc = computeSCC(graph)
-    expect(scc.get('a')).not.toBe(scc.get('b'))
+    expect(scc.getComp('a')).not.toBe(scc.getComp('b'))
   })
 
   it('computes SCCs for the imports dependency graph', () => {
-    expect(importsSCC.size).toBe(importsGraph.order)
+    expect(importsSCC.nodeToComp.size).toBe(importsGraph.order)
     for (const id of importsGraph.nodes()) {
-      expect(typeof importsSCC.get(id)).toBe('number')
+      expect(typeof importsSCC.getComp(id)).toBe('number')
     }
   })
 })

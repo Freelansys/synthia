@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
 import { Workspace, objectId } from '../src/workspace/index.js'
-import { buildDependencyGraph } from '../src/workspace/graph.js'
+import { buildDependencyGraph, computeSCC } from '../src/workspace/graph.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -86,6 +86,57 @@ describe('buildDependencyGraph from imports', () => {
   it('does not create self-loop edges for imports workspace', () => {
     for (const [id] of workspace.allObjects()) {
       expect(graph.hasEdge(id, id)).toBe(false)
+    }
+  })
+})
+
+describe('computeSCC', () => {
+  let importsSCC: Map<string, number>
+  let importsGraph: DirectedGraph
+
+  beforeAll(() => {
+    const workspace = new Workspace(loadSpexSpecsRecursive(importsDir))
+    importsGraph = buildDependencyGraph(workspace)
+    importsSCC = computeSCC(importsGraph)
+  })
+
+  it('maps every node to a component index', () => {
+    const graph = new DirectedGraph()
+    graph.addNode('a')
+    graph.addNode('b')
+    graph.addEdge('a', 'b')
+
+    const scc = computeSCC(graph)
+    expect(scc.size).toBe(2)
+    expect(scc.has('a')).toBe(true)
+    expect(scc.has('b')).toBe(true)
+  })
+
+  it('puts nodes in a cycle in the same component', () => {
+    const graph = new DirectedGraph()
+    graph.addNode('a')
+    graph.addNode('b')
+    graph.addEdge('a', 'b')
+    graph.addEdge('b', 'a')
+
+    const scc = computeSCC(graph)
+    expect(scc.get('a')).toBe(scc.get('b'))
+  })
+
+  it('puts acyclic nodes in different components', () => {
+    const graph = new DirectedGraph()
+    graph.addNode('a')
+    graph.addNode('b')
+    graph.addEdge('a', 'b')
+
+    const scc = computeSCC(graph)
+    expect(scc.get('a')).not.toBe(scc.get('b'))
+  })
+
+  it('computes SCCs for the imports dependency graph', () => {
+    expect(importsSCC.size).toBe(importsGraph.order)
+    for (const id of importsGraph.nodes()) {
+      expect(typeof importsSCC.get(id)).toBe('number')
     }
   })
 })

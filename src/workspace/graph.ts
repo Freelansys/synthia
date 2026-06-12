@@ -1,6 +1,7 @@
 import { type ObjectExpression } from 'spex-parser'
 import { Workspace } from './index.js'
 import { DirectedGraph } from 'graphology'
+import { stronglyConnectedComponents } from 'graphology-components'
 import { logger } from '../logger.js'
 
 function collectExpressionRefs(expr: ObjectExpression, refs: string[]): void {
@@ -58,4 +59,16 @@ export function buildDependencyGraph(workspace: Workspace) {
 
   logger.info(`dependency graph: ${graph.order} node(s), ${edgeCount} edge(s)`)
   return graph
+}
+
+export function computeSCC(graph: DirectedGraph): Map<string, number> {
+  const components = stronglyConnectedComponents(graph)
+  const map = new Map<string, number>()
+  for (const [i, nodes] of components.entries()) {
+    for (const node of nodes) {
+      map.set(node, i)
+    }
+  }
+  logger.info(`SCC: ${components.length} component(s) for ${map.size} node(s)`)
+  return map
 }

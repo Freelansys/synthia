@@ -61,30 +61,51 @@ export function buildDependencyGraph(workspace: Workspace) {
   return graph
 }
 
-export function computeSCC(graph: DirectedGraph): Map<string, number> {
-  const components = stronglyConnectedComponents(graph)
-  const map = new Map<string, number>()
-  for (const [i, nodes] of components.entries()) {
-    for (const node of nodes) {
-      map.set(node, i)
+export class SCCResult {
+  readonly nodeToComp: Map<string, number>
+  readonly compToNodes: Map<number, string[]>
+
+  constructor(graph: DirectedGraph) {
+    const components = stronglyConnectedComponents(graph)
+    const nodeToComp = new Map<string, number>()
+    const compToNodes = new Map<number, string[]>()
+
+    for (const [i, nodes] of components.entries()) {
+      for (const node of nodes) {
+        nodeToComp.set(node, i)
+      }
+      compToNodes.set(i, [...nodes])
     }
+
+    this.nodeToComp = nodeToComp
+    this.compToNodes = compToNodes
+    logger.info(`SCC: ${compToNodes.size} component(s) for ${nodeToComp.size} node(s)`)
   }
-  logger.info(`SCC: ${components.length} component(s) for ${map.size} node(s)`)
-  return map
+
+  getComp(node: string): number | undefined {
+    return this.nodeToComp.get(node)
+  }
+
+  getNodes(comp: number): string[] | undefined {
+    return this.compToNodes.get(comp)
+  }
 }
 
-export function condensationGraph(graph: DirectedGraph, scc: Map<string, number>): DirectedGraph {
-  const cg = new DirectedGraph({ allowSelfLoops: false })
-  const componentIds = new Set(scc.values())
+export function computeSCC(graph: DirectedGraph): SCCResult {
+  return new SCCResult(graph)
+}
 
-  for (const id of componentIds) {
+export function condensationGraph(graph: DirectedGraph, scc: SCCResult): DirectedGraph {
+  const cg = new DirectedGraph({ allowSelfLoops: false })
+
+  for (const id of scc.compToNodes.keys()) {
     cg.addNode(String(id))
   }
 
   const seen = new Set<string>()
   for (const entry of graph.edgeEntries()) {
-    const sourceComp = scc.get(entry.source)
-    const targetComp = scc.get(entry.target)
+    const sourceComp = scc.getComp(entry.source)
+    const targetComp = scc.getComp(entry.target)
     if (sourceComp !== undefined && targetComp !== undefined && sourceComp !== targetComp) {
       const key = `${sourceComp}->${targetComp}`
       if (!seen.has(key)) {

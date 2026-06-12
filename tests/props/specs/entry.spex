@@ -1,4 +1,4 @@
-generate GenerateAPI;
+generate Todo;
 
 package executable MyExecutable as (app: string) -> string;
 

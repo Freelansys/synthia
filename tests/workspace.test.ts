@@ -119,7 +119,7 @@ describe('Workspace', () => {
 
     expect(generates).toHaveLength(1)
     expect(generates[0].declaration.kind).toBe('GenerateDeclaration')
-    expect(generates[0].declaration.name).toBe('GenerateAPI')
+    expect(generates[0].declaration.name).toBe('Todo')
     expect(generates[0].filePath).toBe(entryPath)
 
     expect(packages).toHaveLength(2)

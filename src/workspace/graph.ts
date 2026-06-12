@@ -72,3 +72,28 @@ export function computeSCC(graph: DirectedGraph): Map<string, number> {
   logger.info(`SCC: ${components.length} component(s) for ${map.size} node(s)`)
   return map
 }
+
+export function condensationGraph(graph: DirectedGraph, scc: Map<string, number>): DirectedGraph {
+  const cg = new DirectedGraph({ allowSelfLoops: false })
+  const componentIds = new Set(scc.values())
+
+  for (const id of componentIds) {
+    cg.addNode(String(id))
+  }
+
+  const seen = new Set<string>()
+  for (const entry of graph.edgeEntries()) {
+    const sourceComp = scc.get(entry.source)
+    const targetComp = scc.get(entry.target)
+    if (sourceComp !== undefined && targetComp !== undefined && sourceComp !== targetComp) {
+      const key = `${sourceComp}->${targetComp}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        cg.addEdge(String(sourceComp), String(targetComp))
+      }
+    }
+  }
+
+  logger.info(`condensation graph: ${cg.order} node(s), ${cg.size} edge(s)`)
+  return cg
+}

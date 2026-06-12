@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
 import { Workspace, objectId } from '../src/workspace/index.js'
-import { buildDependencyGraph, computeSCC } from '../src/workspace/graph.js'
+import { buildDependencyGraph, computeSCC, condensationGraph } from '../src/workspace/graph.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -137,6 +137,70 @@ describe('computeSCC', () => {
     expect(importsSCC.size).toBe(importsGraph.order)
     for (const id of importsGraph.nodes()) {
       expect(typeof importsSCC.get(id)).toBe('number')
+    }
+  })
+})
+
+describe('condensationGraph', () => {
+  let importsCG: DirectedGraph
+
+  beforeAll(() => {
+    const workspace = new Workspace(loadSpexSpecsRecursive(importsDir))
+    const graph = buildDependencyGraph(workspace)
+    const scc = computeSCC(graph)
+    importsCG = condensationGraph(graph, scc)
+  })
+
+  it('has one node per SCC component', () => {
+    const graph = new DirectedGraph()
+    graph.addNode('a')
+    graph.addNode('b')
+    graph.addNode('c')
+    graph.addEdge('a', 'b')
+    graph.addEdge('b', 'a')
+    graph.addEdge('b', 'c')
+
+    const scc = computeSCC(graph)
+    const cg = condensationGraph(graph, scc)
+    expect(cg.order).toBe(2)
+  })
+
+  it('is acyclic', () => {
+    const graph = new DirectedGraph()
+    graph.addNode('a')
+    graph.addNode('b')
+    graph.addNode('c')
+    graph.addEdge('a', 'b')
+    graph.addEdge('b', 'c')
+    graph.addEdge('c', 'a')
+
+    const scc = computeSCC(graph)
+    const cg = condensationGraph(graph, scc)
+    // All nodes in one cycle => single SCC node, no edges
+    expect(cg.order).toBe(1)
+    expect(cg.size).toBe(0)
+  })
+
+  it('preserves edges between different components', () => {
+    const graph = new DirectedGraph()
+    graph.addNode('a')
+    graph.addNode('b')
+    graph.addNode('c')
+    graph.addEdge('a', 'b')
+    graph.addEdge('b', 'c')
+
+    const scc = computeSCC(graph)
+    const cg = condensationGraph(graph, scc)
+    // a->b->c, all acyclic => 3 nodes, 2 edges
+    expect(cg.order).toBe(3)
+    expect(cg.size).toBe(2)
+  })
+
+  it('builds condensation of the imports dependency graph', () => {
+    expect(importsCG.order).toBeGreaterThan(0)
+    // every SCC has no self-loops by construction
+    for (const node of importsCG.nodes()) {
+      expect(importsCG.hasEdge(node, node)).toBe(false)
     }
   })
 })

@@ -45,6 +45,7 @@
   "dependencies": {
     "@iarna/toml": "^2.2.5",
     "commander": "^14.0.3",
+    "consola": "^3.4.2",
     "graphology": "^0.26.0",
     "spex-parser": "^0.1.4"
   }

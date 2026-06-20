@@ -7,12 +7,14 @@ import { compileEntryPoint } from '../../generate/compile.js'
 import { loadSpexSpecsRecursive, type ParsedSpexFile } from '../../parse/index.js'
 import { Workspace } from '../../workspace/index.js'
 import { buildDependencyGraph, computeSCC, condensationGraph } from '../../workspace/graph.js'
+import { type LLMConfig } from '../../generate/llm.js'
 
 export interface SpexConfig {
   target?: {
     language?: string
     runtime?: string
   }
+  llm?: LLMConfig
   generation?: {
     strategy?: string
     beam_width?: number
@@ -74,7 +76,7 @@ export function registerGenerateCommand(program: Command): void {
     .argument('[spec]', 'path to Spex specification file', 'spex.toml')
     .option('-o, --output <path>', 'output directory for generated code', './src/generated')
     .option('-t, --target <language>', 'target language/runtime', 'typescript')
-    .action((spec: string, options: { output?: string; target?: string }) => {
+    .action(async (spec: string, options: { output?: string; target?: string }) => {
       try {
         const configDir = dirname(resolve(spec))
         const config = loadConfig(spec)
@@ -99,7 +101,16 @@ export function registerGenerateCommand(program: Command): void {
 
         const allArtifacts: string[] = []
         for (const entryPoint of workspace.entryPoints) {
-          const artifacts = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
+          const artifacts = await compileEntryPoint(
+            workspace,
+            depGraph,
+            scc,
+            cg,
+            entryPoint,
+            cacheDir,
+            config.llm,
+            config.architecture
+          )
           allArtifacts.push(...artifacts)
         }
 

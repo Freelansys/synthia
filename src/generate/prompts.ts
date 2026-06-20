@@ -1,4 +1,4 @@
-import { type ObjectDeclaration, type ObjectExpression } from 'spex-parser'
+import { type ObjectDeclaration, type ObjectExpression, type SubObject } from 'spex-parser'
 import { renderSystem, renderUser } from './prompts/index.js'
 import { type LLMConfig } from './llm.js'
 import { Workspace, BUILTIN_TYPES } from '../workspace/index.js'
@@ -118,14 +118,25 @@ export function buildUserPrompt(params: BuildPromptParams): string {
     objectName: decl.name,
     archStyle: archStyle ?? '',
     baseTypeName: '',
+    typeInstruction: '',
     resolvedDeclaration: '',
   }
 
   let baseCategory: string | undefined
 
   if (objectKind === 'SubObject') {
-    const base = (decl.object as import('spex-parser').SubObject).base
-    vars.baseTypeName = renderExpression(base)
+    const base = (decl.object as SubObject).base
+    const baseRendered = renderExpression(base)
+    vars.baseTypeName = baseRendered
+
+    const baseIsAnonymous = base.kind !== 'NamedObject'
+    if (baseIsAnonymous) {
+      vars.typeInstruction =
+        'The base type is defined inline. Generate the function directly with the given signature — do not declare a separate type.'
+    } else {
+      vars.typeInstruction = `Use the named type "${baseRendered}" in the function signature.`
+    }
+
     baseCategory = isClassifierBase(base) ? 'classifier' : 'function'
   }
 

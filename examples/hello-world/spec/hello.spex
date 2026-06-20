@@ -1,0 +1,11 @@
+create Greeting as (
+  message: string,
+  recipient: string
+);
+
+create SayHello as from (name: string) -> Greeting select {
+  1. create a greeting with the given name
+  2. the message should be "Hello, World!"
+};
+
+generate SayHello;

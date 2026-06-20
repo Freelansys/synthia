@@ -91,6 +91,6 @@ function collectWithImports(
       }
     }
   } catch (err) {
-    logger.warn(`skipping ${resolved} due to parse error`)
+    throw new Error(`failed to parse ${resolved}: ${(err as Error).message}`)
   }
 }

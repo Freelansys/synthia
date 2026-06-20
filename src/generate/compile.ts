@@ -119,6 +119,8 @@ export async function compileEntryPoint(
           dependencyCode,
           siblingDeclarations: siblingDeclarationsStr,
           targetLanguage,
+          workspace,
+          sourceId: id,
           ...(archConfig?.style !== undefined && { archStyle: archConfig.style }),
           ...(archConfig?.functional !== undefined && { functional: archConfig.functional }),
         })

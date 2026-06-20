@@ -123,15 +123,16 @@ describe('topologicalSort', () => {
 
 describe('compileEntryPoint', () => {
   let workspace: Workspace
+  let depGraph: DirectedGraph
   let scc: SCCResult
   let cg: DirectedGraph
   let cacheDir: string
 
   beforeAll(() => {
     workspace = new Workspace(loadSpexSpecs(specsDir))
-    const graph = buildDependencyGraph(workspace)
-    scc = computeSCC(graph)
-    cg = condensationGraph(graph, scc)
+    depGraph = buildDependencyGraph(workspace)
+    scc = computeSCC(depGraph)
+    cg = condensationGraph(depGraph, scc)
     cacheDir = mkdtempSync(join(tmpdir(), 'synthia-compile-'))
   })
 
@@ -139,11 +140,11 @@ describe('compileEntryPoint', () => {
     rmSync(cacheDir, { recursive: true, force: true })
   })
 
-  it('returns artifacts for each object in the subgraph', () => {
+  it('returns artifacts for each object in the subgraph', async () => {
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')
     expect(entryPoint).toBeDefined()
 
-    const artifacts = compileEntryPoint(workspace, scc, cg, entryPoint!, cacheDir)
+    const artifacts = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint!, cacheDir)
     expect(artifacts.length).toBeGreaterThan(0)
 
     for (const artifact of artifacts) {
@@ -154,35 +155,35 @@ describe('compileEntryPoint', () => {
     }
   })
 
-  it('reuses cached artifacts on second call via existsSync', () => {
+  it('reuses cached artifacts on second call via existsSync', async () => {
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')!
 
-    const first = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
-    const second = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
+    const first = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
+    const second = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
 
     expect(second).toEqual(first)
   })
 
-  it('regenerates artifact when file is deleted from disk', () => {
+  it('regenerates artifact when file is deleted from disk', async () => {
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')!
 
-    const first = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
+    const first = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
 
     const deleted = first[0]
     rmSync(deleted)
 
-    const second = compileEntryPoint(workspace, scc, cg, entryPoint, cacheDir)
+    const second = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
     expect(second).toEqual(first)
     expect(existsSync(deleted)).toBe(true)
   })
 
-  it('returns empty array for unknown entry point name', () => {
+  it('returns empty array for unknown entry point name', async () => {
     const fakeEntry = {
       filePath: resolve(specsDir, 'entry.spex'),
       declaration: { kind: 'GenerateDeclaration' as const, name: 'NonExistent' },
     }
 
-    const artifacts = compileEntryPoint(workspace, scc, cg, fakeEntry, cacheDir)
+    const artifacts = await compileEntryPoint(workspace, depGraph, scc, cg, fakeEntry, cacheDir)
     expect(artifacts).toHaveLength(0)
   })
 })

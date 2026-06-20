@@ -8,6 +8,8 @@ import { subgraph as dagSubgraph } from 'graphology-operators'
 import { logger } from '../logger.js'
 import { SCCResult } from '../workspace/graph.js'
 import { Workspace, objectId, type EntryDeclaration } from '../workspace/index.js'
+import { type LLMConfig, generateCode } from './llm.js'
+import { buildSystemPrompt, buildUserPrompt, renderDeclarationsForContext } from './prompts.js'
 
 export function extractSubgraph(cg: DirectedGraph, rootComp: number): DirectedGraph {
   const reachable = new Set<string>()
@@ -35,13 +37,21 @@ function objectHash(decl: ObjectDeclaration): string {
   return createHash('sha256').update(JSON.stringify(decl)).digest('hex')
 }
 
-export function compileEntryPoint(
+export async function compileEntryPoint(
   workspace: Workspace,
+  depGraph: DirectedGraph,
   scc: SCCResult,
   cg: DirectedGraph,
   entryPoint: { filePath: string; declaration: EntryDeclaration },
-  cacheDir: string
-): string[] {
+  cacheDir: string,
+  llmConfig?: LLMConfig,
+  archConfig?: {
+    style?: string
+    functional?: boolean
+  }
+): Promise<string[]> {
+  const targetLanguage = 'typescript'
+
   const entryId =
     workspace.resolveName(entryPoint.declaration.name, entryPoint.filePath) ??
     objectId(entryPoint.filePath, entryPoint.declaration.name)
@@ -58,10 +68,19 @@ export function compileEntryPoint(
     `compiling entry point "${entryPoint.declaration.name}": ${order.length} component(s)`
   )
 
+  const generatedCodeMap = new Map<string, string>()
   const artifacts: string[] = []
+
   for (const compStr of order) {
     const comp = Number(compStr)
     const nodeIds = scc.getNodes(comp) ?? []
+
+    const siblingDecls: ObjectDeclaration[] = []
+    for (const id of nodeIds) {
+      const decl = workspace.getObject(id)
+      if (decl) siblingDecls.push(decl)
+    }
+    const siblingDeclarationsStr = renderDeclarationsForContext(siblingDecls)
 
     for (const id of nodeIds) {
       const decl = workspace.getObject(id)
@@ -79,10 +98,43 @@ export function compileEntryPoint(
       logger.info(`  generating ${id}`)
       mkdirSync(cacheDir, { recursive: true })
 
-      //TODO: Generate artifact
+      let generatedCode: string | undefined
 
-      const payload = JSON.stringify({ objectId: id, declaration: decl }, null, 2)
-      writeFileSync(artifactPath, payload, 'utf-8')
+      if (llmConfig) {
+        const depCodeParts: string[] = []
+        for (const depId of depGraph.outNeighbors(id)) {
+          const code = generatedCodeMap.get(depId)
+          if (code) depCodeParts.push(`// ${depId}\n${code}`)
+        }
+        const dependencyCode = depCodeParts.join('\n\n')
+
+        const systemPrompt = buildSystemPrompt({
+          targetLanguage,
+          ...(archConfig?.style !== undefined && { archStyle: archConfig.style }),
+          ...(archConfig?.functional !== undefined && { functional: archConfig.functional }),
+        })
+
+        const userPrompt = buildUserPrompt({
+          decl,
+          dependencyCode,
+          siblingDeclarations: siblingDeclarationsStr,
+          targetLanguage,
+          ...(archConfig?.style !== undefined && { archStyle: archConfig.style }),
+          ...(archConfig?.functional !== undefined && { functional: archConfig.functional }),
+        })
+
+        generatedCode = await generateCode({ systemPrompt, userPrompt, config: llmConfig })
+        generatedCodeMap.set(id, generatedCode)
+        logger.debug(`  generated ${generatedCode.length} chars for ${id}`)
+      }
+
+      const payload: Record<string, unknown> = { objectId: id, declaration: decl }
+      if (generatedCode !== undefined) {
+        payload.generatedCode = generatedCode
+      }
+
+      const payloadStr = JSON.stringify(payload, null, 2)
+      writeFileSync(artifactPath, payloadStr, 'utf-8')
 
       artifacts.push(artifactPath)
     }

@@ -1,6 +1,7 @@
 import { type ObjectDeclaration, type ObjectExpression } from 'spex-parser'
 import { renderSystem, renderUser } from './prompts/index.js'
 import { type LLMConfig } from './llm.js'
+import { Workspace, BUILTIN_TYPES } from '../workspace/index.js'
 
 export interface BuildPromptParams {
   decl: ObjectDeclaration
@@ -10,6 +11,8 @@ export interface BuildPromptParams {
   llmConfig?: LLMConfig
   archStyle?: string
   functional?: boolean
+  workspace?: Workspace
+  sourceId?: string
 }
 
 function renderExpression(expr: ObjectExpression): string {
@@ -48,6 +51,32 @@ export function renderDeclarationsForContext(deels: ObjectDeclaration[]): string
   return deels.map(renderDeclaration).join('\n')
 }
 
+function isClassifierBase(expr: ObjectExpression): boolean {
+  return expr.kind !== 'ExponentialObject'
+}
+
+function resolveNamedDeclaration(
+  decl: ObjectDeclaration,
+  workspace?: Workspace,
+  sourceId?: string
+): string | undefined {
+  if (decl.object.kind !== 'NamedObject') return undefined
+
+  const name = decl.object.name
+  if ((BUILTIN_TYPES as readonly string[]).includes(name)) return name
+
+  if (!workspace) return undefined
+
+  const filePath = sourceId?.startsWith('file://') ? sourceId.slice(7).split('::')[0] : undefined
+  const resolvedId = workspace.resolveName(name, filePath)
+  if (!resolvedId) return undefined
+
+  const resolvedDecl = workspace.getObject(resolvedId)
+  if (!resolvedDecl) return undefined
+
+  return renderDeclaration(resolvedDecl)
+}
+
 export function buildSystemPrompt(params: {
   targetLanguage: string
   archStyle?: string
@@ -61,7 +90,15 @@ export function buildSystemPrompt(params: {
 }
 
 export function buildUserPrompt(params: BuildPromptParams): string {
-  const { decl, dependencyCode, siblingDeclarations, targetLanguage } = params
+  const {
+    decl,
+    dependencyCode,
+    siblingDeclarations,
+    targetLanguage,
+    archStyle,
+    workspace,
+    sourceId,
+  } = params
   const objectKind = decl.object.kind
 
   const dependencyHeader = dependencyCode
@@ -71,7 +108,7 @@ export function buildUserPrompt(params: BuildPromptParams): string {
     ? 'The following types are defined alongside this one (in the same specification):\n'
     : ''
 
-  return renderUser(objectKind, {
+  const vars: Record<string, string> = {
     dependencyHeader,
     dependencyCode,
     siblingHeader,
@@ -79,5 +116,23 @@ export function buildUserPrompt(params: BuildPromptParams): string {
     targetLanguage,
     declaration: renderDeclaration(decl),
     objectName: decl.name,
-  })
+    archStyle: archStyle ?? '',
+    baseTypeName: '',
+    resolvedDeclaration: '',
+  }
+
+  let baseCategory: string | undefined
+
+  if (objectKind === 'SubObject') {
+    const base = (decl.object as import('spex-parser').SubObject).base
+    vars.baseTypeName = renderExpression(base)
+    baseCategory = isClassifierBase(base) ? 'classifier' : 'function'
+  }
+
+  if (objectKind === 'NamedObject') {
+    const resolved = resolveNamedDeclaration(decl, workspace, sourceId)
+    vars.resolvedDeclaration = resolved ?? '(unknown)'
+  }
+
+  return renderUser(objectKind, vars, baseCategory)
 }

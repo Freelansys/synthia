@@ -13,4 +13,4 @@ style = "clean"
 
 [workspace]
 spec_dir = "./spec"
-output_dir = "./output"
+output_dir = "./output-typescript"

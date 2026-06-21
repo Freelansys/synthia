@@ -74,8 +74,8 @@ export function registerGenerateCommand(program: Command): void {
     .command('generate')
     .description('Synthesize software from Spex specifications')
     .argument('[spec]', 'path to Spex specification file', 'spex.toml')
-    .option('-o, --output <path>', 'output directory for generated code', './src/generated')
-    .option('-t, --target <language>', 'target language/runtime', 'typescript')
+    .option('-o, --output <path>', 'output directory for generated code')
+    .option('-t, --target <language>', 'target language/runtime')
     .action(async (spec: string, options: { output?: string; target?: string }) => {
       try {
         const configDir = dirname(resolve(spec))
@@ -86,7 +86,7 @@ export function registerGenerateCommand(program: Command): void {
         logger.info(`output directory: ${merged.output}`)
         logger.info(`target: ${merged.target}`)
 
-        const specDir = config.workspace?.spec_dir ?? configDir
+        const specDir = resolve(configDir, config.workspace?.spec_dir ?? '.')
         const specs = loadSpexSpecsRecursive(specDir)
         const workspace = new Workspace(specs)
 
@@ -94,7 +94,7 @@ export function registerGenerateCommand(program: Command): void {
         const scc = computeSCC(depGraph)
         const cg = condensationGraph(depGraph, scc)
 
-        const outputDir = resolve(merged.output)
+        const outputDir = resolve(configDir, merged.output)
         mkdirSync(outputDir, { recursive: true })
 
         const cacheDir = resolve(configDir, '.synthia')

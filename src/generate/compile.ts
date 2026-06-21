@@ -7,7 +7,12 @@ import { topologicalSort as dagTopologicalSort } from 'graphology-dag'
 import { subgraph as dagSubgraph } from 'graphology-operators'
 import { logger } from '../logger.js'
 import { SCCResult } from '../workspace/graph.js'
-import { Workspace, objectId, type EntryDeclaration } from '../workspace/index.js'
+import {
+  Workspace,
+  BUILTIN_NAMESPACE,
+  objectId,
+  type EntryDeclaration,
+} from '../workspace/index.js'
 import { type LLMConfig, generateCode } from './llm.js'
 import { buildSystemPrompt, buildUserPrompt, renderDeclarationsForContext } from './prompts.js'
 
@@ -83,6 +88,11 @@ export async function compileEntryPoint(
     const siblingDeclarationsStr = renderDeclarationsForContext(siblingDecls)
 
     for (const id of nodeIds) {
+      if (id.startsWith(`file://${BUILTIN_NAMESPACE}::`)) {
+        logger.debug(`skip built-in: ${id}`)
+        continue
+      }
+
       const decl = workspace.getObject(id)
       if (!decl) continue
 
@@ -125,9 +135,13 @@ export async function compileEntryPoint(
           ...(archConfig?.functional !== undefined && { functional: archConfig.functional }),
         })
 
-        generatedCode = await generateCode({ systemPrompt, userPrompt, config: llmConfig })
-        generatedCodeMap.set(id, generatedCode)
-        logger.debug(`  generated ${generatedCode.length} chars for ${id}`)
+        try {
+          generatedCode = await generateCode({ systemPrompt, userPrompt, config: llmConfig })
+          generatedCodeMap.set(id, generatedCode)
+          logger.debug(`  generated ${generatedCode.length} chars for ${id}`)
+        } catch (err) {
+          logger.warn(`  LLM call failed for ${id}: ${(err as Error).message}`)
+        }
       }
 
       const payload: Record<string, unknown> = { objectId: id, declaration: decl }

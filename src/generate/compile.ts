@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 import { type ObjectDeclaration } from 'spex-parser'
 import { DirectedGraph } from 'graphology'
 import { topologicalSort as dagTopologicalSort } from 'graphology-dag'
@@ -73,7 +73,8 @@ function mergeGeneratedCode(
 ): string[] {
   const ext = languageExtension(targetLanguage)
   const files: string[] = []
-  const compToDir = new Map<number, string>()
+  const compToFilePath = new Map<number, string>()
+  const compToBaseName = new Map<number, string>()
 
   for (const compStr of order) {
     const comp = Number(compStr)
@@ -82,21 +83,27 @@ function mergeGeneratedCode(
     if (nonBuiltinIds.length === 0) continue
 
     const names = nonBuiltinIds.map((id) => workspace.getObject(id)?.name ?? 'Unknown').sort()
-    const dirName = names.join('And')
-    const compDir = resolve(outputDir, dirName)
-    compToDir.set(comp, compDir)
+    const baseName = names.join('And')
+    compToBaseName.set(comp, baseName)
+
+    if (nonBuiltinIds.length === 1) {
+      compToFilePath.set(comp, resolve(outputDir, `${baseName}${ext}`))
+    } else {
+      compToFilePath.set(comp, resolve(outputDir, baseName, `index${ext}`))
+    }
   }
 
   for (const compStr of order) {
     const comp = Number(compStr)
-    const compDir = compToDir.get(comp)
-    if (!compDir) continue
+    const filePath = compToFilePath.get(comp)
+    if (!filePath) continue
 
     const nodeIds = scc.getNodes(comp) ?? []
     const nonBuiltinIds = nodeIds.filter((id) => !id.startsWith(`file://${BUILTIN_NAMESPACE}::`))
 
     const codeParts: string[] = []
     const importMap = new Map<string, Set<string>>()
+    const currentDir = dirname(filePath)
 
     for (const id of nonBuiltinIds) {
       const code = generatedCodeMap.get(id)
@@ -111,17 +118,16 @@ function mergeGeneratedCode(
         if (depId.startsWith(`file://${BUILTIN_NAMESPACE}::`)) continue
         const depComp = scc.getComp(depId)
         if (depComp !== undefined && depComp !== comp) {
-          const depDir = compToDir.get(depComp)
-          if (depDir) {
+          const depBaseName = compToBaseName.get(depComp)
+          if (depBaseName) {
             const depDecl = workspace.getObject(depId)
             const depName = depDecl?.name
             if (depName) {
-              const relPath = relative(compDir, depDir)
-              const importPath = relPath.startsWith('.')
-                ? relPath
-                : `./${relPath.replace(/\\/g, '/')}`
-              if (!importMap.has(importPath)) importMap.set(importPath, new Set())
-              importMap.get(importPath)!.add(depName)
+              const depBasePath = resolve(outputDir, depBaseName)
+              let relPath = relative(currentDir, depBasePath)
+              if (!relPath.startsWith('.')) relPath = `./${relPath}`
+              if (!importMap.has(relPath)) importMap.set(relPath, new Set())
+              importMap.get(relPath)!.add(depName)
             }
           }
         }
@@ -142,8 +148,7 @@ function mergeGeneratedCode(
       '',
     ].join('\n')
 
-    mkdirSync(compDir, { recursive: true })
-    const filePath = resolve(compDir, `index${ext}`)
+    mkdirSync(dirname(filePath), { recursive: true })
     writeFileSync(filePath, content, 'utf-8')
     files.push(filePath)
   }

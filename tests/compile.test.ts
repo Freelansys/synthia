@@ -10,7 +10,12 @@ import {
   condensationGraph,
   SCCResult,
 } from '../src/workspace/graph.js'
-import { extractSubgraph, topologicalSort, compileEntryPoint } from '../src/generate/compile.js'
+import {
+  extractSubgraph,
+  topologicalSort,
+  compileEntryPoint,
+  type CompileConfig,
+} from '../src/generate/compile.js'
 import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -127,6 +132,9 @@ describe('compileEntryPoint', () => {
   let scc: SCCResult
   let cg: DirectedGraph
   let cacheDir: string
+  let outDir: string
+
+  const compileConfig: CompileConfig = { targetLanguage: 'typescript' }
 
   beforeAll(() => {
     workspace = new Workspace(loadSpexSpecs(specsDir))
@@ -134,56 +142,117 @@ describe('compileEntryPoint', () => {
     scc = computeSCC(depGraph)
     cg = condensationGraph(depGraph, scc)
     cacheDir = mkdtempSync(join(tmpdir(), 'synthia-compile-'))
+    outDir = mkdtempSync(join(tmpdir(), 'synthia-out-'))
   })
 
   afterAll(() => {
     rmSync(cacheDir, { recursive: true, force: true })
+    rmSync(outDir, { recursive: true, force: true })
   })
 
-  it('returns artifacts for each object in the subgraph', async () => {
+  it('returns artifacts and output files for each object in the subgraph', async () => {
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')
     expect(entryPoint).toBeDefined()
 
-    const artifacts = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint!, cacheDir)
-    expect(artifacts.length).toBeGreaterThan(0)
+    const result = await compileEntryPoint(
+      workspace,
+      depGraph,
+      scc,
+      cg,
+      entryPoint!,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
+    expect(result.artifacts.length).toBeGreaterThan(0)
 
-    for (const artifact of artifacts) {
+    for (const artifact of result.artifacts) {
       expect(existsSync(artifact)).toBe(true)
       const content = JSON.parse(readFileSync(artifact, 'utf-8'))
       expect(content).toHaveProperty('objectId')
       expect(content).toHaveProperty('declaration')
+    }
+
+    for (const file of result.outputFiles) {
+      expect(existsSync(file)).toBe(true)
     }
   })
 
   it('reuses cached artifacts on second call via existsSync', async () => {
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')!
 
-    const first = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
-    const second = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
+    const first = await compileEntryPoint(
+      workspace,
+      depGraph,
+      scc,
+      cg,
+      entryPoint,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
+    const second = await compileEntryPoint(
+      workspace,
+      depGraph,
+      scc,
+      cg,
+      entryPoint,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
 
-    expect(second).toEqual(first)
+    expect(second.artifacts).toEqual(first.artifacts)
   })
 
   it('regenerates artifact when file is deleted from disk', async () => {
     const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Todo')!
 
-    const first = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
+    const first = await compileEntryPoint(
+      workspace,
+      depGraph,
+      scc,
+      cg,
+      entryPoint,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
 
-    const deleted = first[0]
+    const deleted = first.artifacts[0]
     rmSync(deleted)
 
-    const second = await compileEntryPoint(workspace, depGraph, scc, cg, entryPoint, cacheDir)
-    expect(second).toEqual(first)
+    const second = await compileEntryPoint(
+      workspace,
+      depGraph,
+      scc,
+      cg,
+      entryPoint,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
+    expect(second.artifacts).toEqual(first.artifacts)
     expect(existsSync(deleted)).toBe(true)
   })
 
-  it('returns empty array for unknown entry point name', async () => {
+  it('returns empty artifacts and outputFiles for unknown entry point name', async () => {
     const fakeEntry = {
       filePath: resolve(specsDir, 'entry.spex'),
       declaration: { kind: 'GenerateDeclaration' as const, name: 'NonExistent' },
     }
 
-    const artifacts = await compileEntryPoint(workspace, depGraph, scc, cg, fakeEntry, cacheDir)
-    expect(artifacts).toHaveLength(0)
+    const result = await compileEntryPoint(
+      workspace,
+      depGraph,
+      scc,
+      cg,
+      fakeEntry,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
+    expect(result.artifacts).toHaveLength(0)
+    expect(result.outputFiles).toHaveLength(0)
   })
 })

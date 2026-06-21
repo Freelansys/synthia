@@ -99,24 +99,37 @@ export function registerGenerateCommand(program: Command): void {
 
         const cacheDir = resolve(configDir, '.synthia')
 
-        const allArtifacts: string[] = []
+        const allOutputFiles: string[] = []
         for (const entryPoint of workspace.entryPoints) {
-          const artifacts = await compileEntryPoint(
+          const result = await compileEntryPoint(
             workspace,
             depGraph,
             scc,
             cg,
             entryPoint,
             cacheDir,
-            config.llm,
-            config.architecture
+            outputDir,
+            {
+              targetLanguage: merged.target,
+              ...(config.llm !== undefined && { llm: config.llm }),
+              ...(config.architecture?.style !== undefined && {
+                archStyle: config.architecture.style,
+              }),
+              ...(config.architecture?.functional !== undefined && {
+                functional: config.architecture.functional,
+              }),
+            }
           )
-          allArtifacts.push(...artifacts)
+          allOutputFiles.push(...result.outputFiles)
         }
 
         logger.info(
-          `generated ${allArtifacts.length} artifact(s) across ${workspace.entryPoints.length} entry point(s)`
+          `generated ${allOutputFiles.length} output file(s) across ${workspace.entryPoints.length} entry point(s)`
         )
+
+        for (const file of allOutputFiles) {
+          logger.info(`  wrote ${file}`)
+        }
       } catch (err) {
         logger.error(`generate failed: ${(err as Error).message}`)
         process.exit(1)

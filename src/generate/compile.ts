@@ -99,8 +99,9 @@ export async function compileEntryPoint(
       const decl = workspace.getObject(id)
       if (!decl) continue
 
+      const langCacheDir = resolve(cacheDir, config.targetLanguage)
       const hash = objectHash(decl)
-      const artifactPath = resolve(cacheDir, `obj-${hash}.json`)
+      const artifactPath = resolve(langCacheDir, `obj-${hash}.json`)
 
       if (existsSync(artifactPath)) {
         artifacts.push(artifactPath)
@@ -109,7 +110,7 @@ export async function compileEntryPoint(
       }
 
       logger.info(`  generating ${id}`)
-      mkdirSync(cacheDir, { recursive: true })
+      mkdirSync(langCacheDir, { recursive: true })
 
       let generatedCode: string | undefined
 

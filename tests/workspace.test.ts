@@ -5,6 +5,7 @@ import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
 import {
   Workspace,
   objectId,
+  builtinId,
   BUILTIN_NAMESPACE,
   BUILTIN_TYPES,
   type EntryDeclaration,
@@ -29,7 +30,7 @@ describe('Workspace', () => {
     const workspace = new Workspace([])
 
     for (const name of BUILTIN_TYPES) {
-      const id = objectId(BUILTIN_NAMESPACE, name)
+      const id = builtinId(name)
       const decl = workspace.getObject(id)
       expect(decl?.kind).toBe('ObjectDeclaration')
       expect(decl?.name).toBe(name)
@@ -79,7 +80,7 @@ describe('Workspace', () => {
 
     expect(entries).toHaveLength(BUILTIN_TYPES.length)
     entries.forEach(([id, decl]) => {
-      expect(id).toMatch(/^file:\/\//)
+      expect(id).toMatch(/^spex:\/\//)
       expect(decl.kind).toBe('ObjectDeclaration')
     })
   })

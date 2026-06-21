@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DirectedGraph } from 'graphology'
 import { topologicalSort as dagTopologicalSort } from 'graphology-dag'
 import { type ObjectDeclaration, type ObjectExpression, type SpexFile } from 'spex-parser'
-import { Workspace, BUILTIN_NAMESPACE } from '../src/workspace/index.js'
+import { Workspace, BUILTIN_ID_PREFIX, BUILTIN_NAMESPACE } from '../src/workspace/index.js'
 import {
   buildDependencyGraph,
   computeSCC,
@@ -55,9 +55,9 @@ function entryPoint(name: string, filePath: string) {
 describe('collectBuiltinFiltered', () => {
   it('filters out built-in IDs', () => {
     const graph = new DirectedGraph({ allowSelfLoops: false })
-    graph.addNode(`file://${BUILTIN_NAMESPACE}::string`)
+    graph.addNode(`spex://${BUILTIN_NAMESPACE}::string`)
     graph.addNode('file://spec.spex::User')
-    graph.addNode(`file://${BUILTIN_NAMESPACE}::number`)
+    graph.addNode(`spex://${BUILTIN_NAMESPACE}::number`)
     const scc = computeSCC(graph)
 
     const comp0 = scc.getComp('file://spec.spex::User')
@@ -68,11 +68,11 @@ describe('collectBuiltinFiltered', () => {
 
   it('returns empty when all IDs are builtins', () => {
     const graph = new DirectedGraph({ allowSelfLoops: false })
-    graph.addNode(`file://${BUILTIN_NAMESPACE}::string`)
-    graph.addNode(`file://${BUILTIN_NAMESPACE}::bool`)
+    graph.addNode(`spex://${BUILTIN_NAMESPACE}::string`)
+    graph.addNode(`spex://${BUILTIN_NAMESPACE}::bool`)
     const scc = computeSCC(graph)
 
-    const comp = scc.getComp(`file://${BUILTIN_NAMESPACE}::string`)!
+    const comp = scc.getComp(`spex://${BUILTIN_NAMESPACE}::string`)!
     expect(collectBuiltinFiltered(scc, comp)).toHaveLength(0)
   })
 })
@@ -151,7 +151,7 @@ describe('resolveImports', () => {
   })
 
   it('skips built-in dependencies', () => {
-    const builtinId = `file://${BUILTIN_NAMESPACE}::string`
+    const builtinId = `spex://${BUILTIN_NAMESPACE}::string`
     const graph = new DirectedGraph({ allowSelfLoops: false })
     graph.addNode(builtinId)
     graph.addNode('file://spec.spex::Foo')
@@ -224,7 +224,7 @@ function setupMergeScenario(entryName = 'A'): {
 
   const generatedCodeMap = new Map<string, string>()
   for (const [id, decl] of ws.allObjects()) {
-    if (id.startsWith(`file://${BUILTIN_NAMESPACE}::`)) continue
+    if (id.startsWith(BUILTIN_ID_PREFIX)) continue
     generatedCodeMap.set(id, `export interface ${decl.name} {\n  /* generated */\n}`)
   }
 

@@ -1,7 +1,7 @@
 import { relative, resolve } from 'node:path'
 import { type DirectedGraph } from 'graphology'
 import { SCCResult } from '../../workspace/graph.js'
-import { Workspace, BUILTIN_NAMESPACE } from '../../workspace/index.js'
+import { Workspace, BUILTIN_ID_PREFIX } from '../../workspace/index.js'
 import { typescriptMerge } from './typescript.js'
 import { pythonMerge } from './python.js'
 
@@ -37,7 +37,7 @@ export function mergeGeneratedCode(
 // ── Shared helpers ──────────────────────────────────────────
 
 export function collectBuiltinFiltered(scc: SCCResult, comp: number): string[] {
-  return (scc.getNodes(comp) ?? []).filter((id) => !id.startsWith(`file://${BUILTIN_NAMESPACE}::`))
+  return (scc.getNodes(comp) ?? []).filter((id) => !id.startsWith(BUILTIN_ID_PREFIX))
 }
 
 export function sortedObjectNames(workspace: Workspace, ids: string[]): string[] {
@@ -58,7 +58,7 @@ export function resolveImports(
 
   for (const id of ids) {
     for (const depId of depGraph.outNeighbors(id)) {
-      if (depId.startsWith(`file://${BUILTIN_NAMESPACE}::`)) continue
+      if (depId.startsWith(BUILTIN_ID_PREFIX)) continue
       const depComp = scc.getComp(depId)
       if (depComp === undefined || depComp === currentComp) continue
 

@@ -7,11 +7,16 @@ import { type ParsedSpexFile } from '../parse/index.js'
 import { logger } from '../logger.js'
 
 export const BUILTIN_NAMESPACE = 'builtin'
+export const BUILTIN_ID_PREFIX = `spex://${BUILTIN_NAMESPACE}::`
 
 export const BUILTIN_TYPES = ['string', 'number', 'bool', 'unit'] as const
 
 export function objectId(filePath: string, name: string): string {
   return `file://${filePath}::${name}`
+}
+
+export function builtinId(name: string): string {
+  return `spex://${BUILTIN_NAMESPACE}::${name}`
 }
 
 function builtinDeclaration(name: string): ObjectDeclaration {
@@ -27,7 +32,7 @@ export class Workspace {
 
   constructor(specs: ParsedSpexFile[]) {
     for (const name of BUILTIN_TYPES) {
-      const id = objectId(BUILTIN_NAMESPACE, name)
+      const id = builtinId(name)
       this.objects.set(id, builtinDeclaration(name))
     }
 

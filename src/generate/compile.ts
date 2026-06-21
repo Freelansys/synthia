@@ -9,7 +9,7 @@ import { logger } from '../logger.js'
 import { SCCResult } from '../workspace/graph.js'
 import {
   Workspace,
-  BUILTIN_NAMESPACE,
+  BUILTIN_ID_PREFIX,
   objectId,
   type EntryDeclaration,
 } from '../workspace/index.js'
@@ -91,7 +91,7 @@ export async function compileEntryPoint(
     const siblingDeclarationsStr = renderDeclarationsForContext(siblingDecls)
 
     for (const id of nodeIds) {
-      if (id.startsWith(`file://${BUILTIN_NAMESPACE}::`)) {
+      if (id.startsWith(BUILTIN_ID_PREFIX)) {
         logger.debug(`skip built-in: ${id}`)
         continue
       }

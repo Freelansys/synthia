@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
-import { Workspace, objectId } from '../src/workspace/index.js'
+import { Workspace, objectId, builtinId } from '../src/workspace/index.js'
 import {
   buildDependencyGraph,
   computeSCC,
@@ -45,8 +45,8 @@ describe('buildDependencyGraph', () => {
   })
 
   it('creates no outgoing edges for objects with no deps', () => {
-    expect(graph.outDegree(objectId('builtin', 'string'))).toBe(0)
-    expect(graph.outDegree(objectId('builtin', 'number'))).toBe(0)
+    expect(graph.outDegree(builtinId('string'))).toBe(0)
+    expect(graph.outDegree(builtinId('number'))).toBe(0)
   })
 })
 
@@ -64,7 +64,7 @@ describe('buildDependencyGraph from imports', () => {
     signUpId = objectId(resolve(importsDir, 'main.spex'), 'SignUp')
     emailId = objectId(resolve(importsDir, 'types.spex'), 'EmailAddress')
     passwordId = objectId(resolve(importsDir, 'types.spex'), 'Password')
-    stringId = objectId('builtin', 'string')
+    stringId = builtinId('string')
   })
 
   it('includes all objects from imported files as nodes', () => {

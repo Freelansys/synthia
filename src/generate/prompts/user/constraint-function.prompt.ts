@@ -1,6 +1,6 @@
 export default `{{dependencyHeader}}{{dependencyCode}}
 {{siblingHeader}}{{siblingDeclarations}}
-Generate {{targetLanguage}} code that implements the following function with the specified constraints and logic.
+Generate {{targetLanguage}} code that implements function "{{objectName}}" with the specified constraints and logic.
 {{typeInstruction}}
 
 {{declaration}}

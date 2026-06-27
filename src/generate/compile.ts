@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { type ObjectDeclaration } from 'spex-parser'
 import { DirectedGraph } from 'graphology'
@@ -50,6 +50,16 @@ function objectHash(decl: ObjectDeclaration): string {
   return createHash('sha256').update(JSON.stringify(decl)).digest('hex')
 }
 
+export function isAbstract(id: string, workspace: Workspace, callGraph: DirectedGraph): boolean {
+  if (!callGraph.hasNode(id)) return false
+  if (callGraph.outDegree(id) > 0 || callGraph.inDegree(id) > 0) return false
+
+  const decl = workspace.getObject(id)
+  if (!decl) return false
+
+  return decl.object.kind === 'SubObject'
+}
+
 export async function compileEntryPoint(
   workspace: Workspace,
   callGraph: DirectedGraph,
@@ -70,19 +80,20 @@ export async function compileEntryPoint(
     return { artifacts: [], outputFiles: [] }
   }
 
-  const subgraph = extractSubgraph(cg, rootComp)
-  const order = topologicalSort(subgraph)
-
-  logger.info(
-    `compiling entry point "${entryPoint.declaration.name}": ${order.length} component(s)`
-  )
-
   const generatedCodeMap = new Map<string, string>()
   const artifacts: string[] = []
+  const order: string[] = []
+  const compiled = new Set<number>()
 
-  for (const compStr of order) {
-    const comp = Number(compStr)
-    const nodeIds = scc.getNodes(comp) ?? []
+  async function compileSCC(compIdx: number): Promise<void> {
+    if (compiled.has(compIdx)) return
+    compiled.add(compIdx)
+
+    for (const depCompStr of cg.outNeighbors(String(compIdx))) {
+      await compileSCC(Number(depCompStr))
+    }
+
+    const nodeIds = scc.getNodes(compIdx) ?? []
 
     const siblingDecls: ObjectDeclaration[] = []
     for (const id of nodeIds) {
@@ -107,6 +118,19 @@ export async function compileEntryPoint(
       if (existsSync(artifactPath)) {
         artifacts.push(artifactPath)
         logger.debug(`cache hit for ${id}`)
+        try {
+          const cached = JSON.parse(readFileSync(artifactPath, 'utf-8'))
+          if (cached.generatedCode) {
+            generatedCodeMap.set(id, cached.generatedCode)
+          }
+        } catch {
+          logger.debug(`failed to read cached code for ${id}`)
+        }
+        continue
+      }
+
+      if (isAbstract(id, workspace, callGraph)) {
+        logger.debug(`skip abstract object: ${id}`)
         continue
       }
 
@@ -159,7 +183,15 @@ export async function compileEntryPoint(
 
       artifacts.push(artifactPath)
     }
+
+    order.push(String(compIdx))
   }
+
+  await compileSCC(rootComp)
+
+  logger.info(
+    `compiling entry point "${entryPoint.declaration.name}": ${order.length} component(s)`
+  )
 
   const outputFiles = mergeGeneratedCode(
     workspace,

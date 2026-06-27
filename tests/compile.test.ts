@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs } from '../src/parse/index.js'
-import { Workspace } from '../src/workspace/index.js'
+import { Workspace, objectId } from '../src/workspace/index.js'
 import {
   buildDependencyGraphs,
   combineGraphs,
@@ -15,6 +15,7 @@ import {
   extractSubgraph,
   topologicalSort,
   compileEntryPoint,
+  isAbstract,
   type CompileConfig,
 } from '../src/generate/compile.js'
 import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs'
@@ -265,5 +266,333 @@ describe('compileEntryPoint', () => {
     )
     expect(result.artifacts).toHaveLength(0)
     expect(result.outputFiles).toHaveLength(0)
+  })
+})
+
+describe('isAbstract', () => {
+  it('returns true for SubObject with no callGraph edges', () => {
+    const workspace = new Workspace([
+      {
+        filePath: '/test.spex',
+        ast: {
+          kind: 'SpexFile' as const,
+          declarations: [
+            {
+              kind: 'ObjectDeclaration' as const,
+              name: 'Vague',
+              object: {
+                kind: 'SubObject' as const,
+                base: { kind: 'NamedObject' as const, name: 'string' },
+                constraint: {
+                  raw: '',
+                  parts: [{ kind: 'ConstraintText' as const, text: 'is valid' }],
+                },
+              },
+            },
+          ],
+        },
+      },
+    ])
+    const { callGraph } = buildDependencyGraphs(workspace)
+    const id = objectId('/test.spex', 'Vague')
+    expect(isAbstract(id, workspace, callGraph)).toBe(true)
+  })
+
+  it('returns false for SubObject with outgoing callGraph edge', () => {
+    const workspace = new Workspace([
+      {
+        filePath: '/test.spex',
+        ast: {
+          kind: 'SpexFile' as const,
+          declarations: [
+            {
+              kind: 'ObjectDeclaration' as const,
+              name: 'Check',
+              object: {
+                kind: 'SubObject' as const,
+                base: { kind: 'NamedObject' as const, name: 'string' },
+                constraint: {
+                  raw: '',
+                  parts: [{ kind: 'ConstraintText' as const, text: 'checks' }],
+                },
+              },
+            },
+            {
+              kind: 'ObjectDeclaration' as const,
+              name: 'Caller',
+              object: {
+                kind: 'SubObject' as const,
+                base: { kind: 'NamedObject' as const, name: 'string' },
+                constraint: {
+                  raw: '',
+                  parts: [{ kind: 'ConstraintReference' as const, name: 'Check' }],
+                },
+              },
+            },
+          ],
+        },
+      },
+    ])
+    const { callGraph } = buildDependencyGraphs(workspace)
+    const callerId = objectId('/test.spex', 'Caller')
+    expect(isAbstract(callerId, workspace, callGraph)).toBe(false)
+  })
+
+  it('returns false for SubObject with incoming callGraph edge', () => {
+    const workspace = new Workspace([
+      {
+        filePath: '/test.spex',
+        ast: {
+          kind: 'SpexFile' as const,
+          declarations: [
+            {
+              kind: 'ObjectDeclaration' as const,
+              name: 'Check',
+              object: {
+                kind: 'SubObject' as const,
+                base: { kind: 'NamedObject' as const, name: 'string' },
+                constraint: {
+                  raw: '',
+                  parts: [{ kind: 'ConstraintText' as const, text: 'checks' }],
+                },
+              },
+            },
+            {
+              kind: 'ObjectDeclaration' as const,
+              name: 'Caller',
+              object: {
+                kind: 'SubObject' as const,
+                base: { kind: 'NamedObject' as const, name: 'string' },
+                constraint: {
+                  raw: '',
+                  parts: [{ kind: 'ConstraintReference' as const, name: 'Check' }],
+                },
+              },
+            },
+          ],
+        },
+      },
+    ])
+    const { callGraph } = buildDependencyGraphs(workspace)
+    const checkId = objectId('/test.spex', 'Check')
+    expect(isAbstract(checkId, workspace, callGraph)).toBe(false)
+  })
+
+  it('returns false for ProductObject with no callGraph edges', () => {
+    const workspace = new Workspace([
+      {
+        filePath: '/test.spex',
+        ast: {
+          kind: 'SpexFile' as const,
+          declarations: [
+            {
+              kind: 'ObjectDeclaration' as const,
+              name: 'Data',
+              object: {
+                kind: 'ProductObject' as const,
+                fields: { value: { kind: 'NamedObject' as const, name: 'string' } },
+              },
+            },
+          ],
+        },
+      },
+    ])
+    const { callGraph } = buildDependencyGraphs(workspace)
+    const id = objectId('/test.spex', 'Data')
+    expect(isAbstract(id, workspace, callGraph)).toBe(false)
+  })
+
+  it('returns false for non-existent id', () => {
+    const workspace = new Workspace([])
+    const callGraph = new DirectedGraph({ allowSelfLoops: false })
+    expect(isAbstract('file://nonexistent', workspace, callGraph)).toBe(false)
+  })
+})
+
+describe('compileEntryPoint with abstract objects', () => {
+  let cacheDir: string
+  let outDir: string
+
+  const compileConfig: CompileConfig = { targetLanguage: 'typescript' }
+
+  beforeAll(() => {
+    cacheDir = mkdtempSync(join(tmpdir(), 'synthia-abstract-'))
+    outDir = mkdtempSync(join(tmpdir(), 'synthia-abstract-out-'))
+  })
+
+  afterAll(() => {
+    rmSync(cacheDir, { recursive: true, force: true })
+    rmSync(outDir, { recursive: true, force: true })
+  })
+
+  it('skips abstract subobjects and only generates concrete ones', async () => {
+    const spec = {
+      filePath: '/test/abstract.spex',
+      ast: {
+        kind: 'SpexFile' as const,
+        declarations: [
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Base',
+            object: {
+              kind: 'ProductObject' as const,
+              fields: { value: { kind: 'NamedObject' as const, name: 'string' } },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Vague',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'Base' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintText' as const, text: 'is valid' }],
+              },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Checker',
+            object: {
+              kind: 'SubObject' as const,
+              base: {
+                kind: 'ExponentialObject' as const,
+                base: { kind: 'NamedObject' as const, name: 'Base' },
+                exponent: { kind: 'NamedObject' as const, name: 'bool' },
+              },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintText' as const, text: 'checks validity' }],
+              },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Concrete',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'Base' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintReference' as const, name: 'Checker' }],
+              },
+            },
+          },
+          {
+            kind: 'GenerateDeclaration' as const,
+            name: 'Concrete',
+          },
+        ],
+      },
+    }
+
+    const workspace = new Workspace([spec])
+    const { typeGraph, callGraph } = buildDependencyGraphs(workspace)
+    const depGraph = combineGraphs(typeGraph, callGraph)
+    const scc = computeSCC(depGraph)
+    const cg = condensationGraph(depGraph, scc)
+    const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'Concrete')!
+
+    const result = await compileEntryPoint(
+      workspace,
+      callGraph,
+      typeGraph,
+      scc,
+      cg,
+      entryPoint,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
+
+    const baseId = objectId('/test/abstract.spex', 'Base')
+    const vagueId = objectId('/test/abstract.spex', 'Vague')
+    const checkerId = objectId('/test/abstract.spex', 'Checker')
+    const concreteId = objectId('/test/abstract.spex', 'Concrete')
+
+    expect(isAbstract(vagueId, workspace, callGraph)).toBe(true)
+    expect(isAbstract(baseId, workspace, callGraph)).toBe(false)
+    expect(isAbstract(concreteId, workspace, callGraph)).toBe(false)
+    expect(isAbstract(checkerId, workspace, callGraph)).toBe(false)
+
+    expect(result.artifacts.length).toBeGreaterThan(0)
+    for (const artifact of result.artifacts) {
+      const content = JSON.parse(readFileSync(artifact, 'utf-8'))
+      const objId: string = content.objectId
+      expect(objId).not.toBe(vagueId)
+    }
+
+    expect(result.outputFiles.length).toBeGreaterThan(0)
+  })
+
+  it('compiles all objects in a dependency chain', async () => {
+    const spec = {
+      filePath: '/test/chain.spex',
+      ast: {
+        kind: 'SpexFile' as const,
+        declarations: [
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'C',
+            object: {
+              kind: 'ProductObject' as const,
+              fields: { value: { kind: 'NamedObject' as const, name: 'string' } },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'B',
+            object: {
+              kind: 'ProductObject' as const,
+              fields: { child: { kind: 'NamedObject' as const, name: 'C' } },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'A',
+            object: {
+              kind: 'ProductObject' as const,
+              fields: { child: { kind: 'NamedObject' as const, name: 'B' } },
+            },
+          },
+          {
+            kind: 'GenerateDeclaration' as const,
+            name: 'A',
+          },
+        ],
+      },
+    } as any
+
+    const workspace = new Workspace([spec])
+    const { typeGraph, callGraph } = buildDependencyGraphs(workspace)
+    const depGraph = combineGraphs(typeGraph, callGraph)
+    const scc = computeSCC(depGraph)
+    const cg = condensationGraph(depGraph, scc)
+    const entryPoint = workspace.entryPoints.find((ep) => ep.declaration.name === 'A')!
+
+    const result = await compileEntryPoint(
+      workspace,
+      callGraph,
+      typeGraph,
+      scc,
+      cg,
+      entryPoint,
+      cacheDir,
+      outDir,
+      compileConfig
+    )
+
+    expect(result.artifacts).toHaveLength(3)
+
+    const artifactIds = result.artifacts.map((a) => {
+      const content = JSON.parse(readFileSync(a, 'utf-8'))
+      return content.objectId
+    })
+    expect(artifactIds).toContain(objectId('/test/chain.spex', 'A'))
+    expect(artifactIds).toContain(objectId('/test/chain.spex', 'B'))
+    expect(artifactIds).toContain(objectId('/test/chain.spex', 'C'))
+
+    expect(result.outputFiles.length).toBeGreaterThan(0)
   })
 })

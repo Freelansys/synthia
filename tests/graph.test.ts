@@ -123,6 +123,100 @@ describe('buildDependencyGraphs from imports', () => {
   })
 })
 
+describe('buildDependencyGraphs @ref resolution', () => {
+  it('throws on unresolved @reference', () => {
+    const spec = {
+      filePath: '/test/spec.spex',
+      ast: {
+        kind: 'SpexFile' as const,
+        declarations: [
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Foo',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'string' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintReference' as const, name: 'NonExistentRef' }],
+              },
+            },
+          },
+        ],
+      },
+    }
+
+    const workspace = new Workspace([spec])
+    expect(() => buildDependencyGraphs(workspace)).toThrow(
+      'unresolved @reference "NonExistentRef" in "Foo"'
+    )
+  })
+
+  it('does not throw on resolved @reference', () => {
+    const spec = {
+      filePath: '/test/spec.spex',
+      ast: {
+        kind: 'SpexFile' as const,
+        declarations: [
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Bar',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'string' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintText' as const, text: 'some constraint' }],
+              },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Foo',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'Bar' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintReference' as const, name: 'Bar' }],
+              },
+            },
+          },
+        ],
+      },
+    }
+
+    const workspace = new Workspace([spec])
+    expect(() => buildDependencyGraphs(workspace)).not.toThrow()
+  })
+
+  it('does not throw on self-referencing @reference', () => {
+    const spec = {
+      filePath: '/test/spec.spex',
+      ast: {
+        kind: 'SpexFile' as const,
+        declarations: [
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'SelfRef',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'string' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintReference' as const, name: 'SelfRef' }],
+              },
+            },
+          },
+        ],
+      },
+    }
+
+    const workspace = new Workspace([spec])
+    expect(() => buildDependencyGraphs(workspace)).not.toThrow()
+  })
+})
+
 describe('computeSCC', () => {
   let importsSCC: SCCResult
   let importsGraph: DirectedGraph

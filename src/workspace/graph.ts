@@ -67,7 +67,11 @@ export function buildDependencyGraphs(workspace: Workspace) {
     const seenCall = new Set<string>()
     for (const name of callRefs) {
       const targetId = workspace.resolveName(name, filePath)
-      if (targetId && targetId !== sourceId && !seenCall.has(targetId)) {
+      if (!targetId) {
+        const objectName = workspace.getObject(sourceId)?.name ?? sourceId
+        throw new Error(`unresolved @reference "${name}" in "${objectName}" at ${sourceId}`)
+      }
+      if (targetId !== sourceId && !seenCall.has(targetId)) {
         seenCall.add(targetId)
         callGraph.addEdge(sourceId, targetId)
         callEdgeCount++

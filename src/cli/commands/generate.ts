@@ -6,7 +6,12 @@ import { logger } from '../../logger.js'
 import { compileEntryPoint } from '../../generate/compile.js'
 import { loadSpexSpecsRecursive, type ParsedSpexFile } from '../../parse/index.js'
 import { Workspace } from '../../workspace/index.js'
-import { buildDependencyGraph, computeSCC, condensationGraph } from '../../workspace/graph.js'
+import {
+  buildDependencyGraphs,
+  combineGraphs,
+  computeSCC,
+  condensationGraph,
+} from '../../workspace/graph.js'
 import { type LLMConfig } from '../../generate/llm.js'
 
 export interface SpexConfig {
@@ -90,7 +95,8 @@ export function registerGenerateCommand(program: Command): void {
         const specs = loadSpexSpecsRecursive(specDir)
         const workspace = new Workspace(specs)
 
-        const depGraph = buildDependencyGraph(workspace)
+        const { typeGraph, callGraph } = buildDependencyGraphs(workspace)
+        const depGraph = combineGraphs(typeGraph, callGraph)
         const scc = computeSCC(depGraph)
         const cg = condensationGraph(depGraph, scc)
 
@@ -103,7 +109,8 @@ export function registerGenerateCommand(program: Command): void {
         for (const entryPoint of workspace.entryPoints) {
           const result = await compileEntryPoint(
             workspace,
-            depGraph,
+            callGraph,
+            typeGraph,
             scc,
             cg,
             entryPoint,

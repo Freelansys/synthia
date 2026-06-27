@@ -52,7 +52,8 @@ function objectHash(decl: ObjectDeclaration): string {
 
 export async function compileEntryPoint(
   workspace: Workspace,
-  depGraph: DirectedGraph,
+  callGraph: DirectedGraph,
+  typeGraph: DirectedGraph,
   scc: SCCResult,
   cg: DirectedGraph,
   entryPoint: { filePath: string; declaration: EntryDeclaration },
@@ -116,7 +117,7 @@ export async function compileEntryPoint(
 
       if (config.llm) {
         const depCodeParts: string[] = []
-        for (const depId of depGraph.outNeighbors(id)) {
+        for (const depId of callGraph.outNeighbors(id)) {
           const code = generatedCodeMap.get(depId)
           if (code) depCodeParts.push(`// ${depId}\n${code}`)
         }
@@ -162,7 +163,8 @@ export async function compileEntryPoint(
 
   const outputFiles = mergeGeneratedCode(
     workspace,
-    depGraph,
+    callGraph,
+    typeGraph,
     scc,
     order,
     generatedCodeMap,

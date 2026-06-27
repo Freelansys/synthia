@@ -7,7 +7,8 @@ import { pythonMerge } from './python.js'
 
 export interface MergerParams {
   workspace: Workspace
-  depGraph: DirectedGraph
+  callGraph: DirectedGraph
+  typeGraph: DirectedGraph
   scc: SCCResult
   order: string[]
   generatedCodeMap: Map<string, string>
@@ -22,7 +23,8 @@ const registry: Record<string, (params: MergerParams) => string[]> = {
 
 export function mergeGeneratedCode(
   workspace: Workspace,
-  depGraph: DirectedGraph,
+  callGraph: DirectedGraph,
+  typeGraph: DirectedGraph,
   scc: SCCResult,
   order: string[],
   generatedCodeMap: Map<string, string>,
@@ -31,7 +33,7 @@ export function mergeGeneratedCode(
 ): string[] {
   const merger = registry[language]
   if (!merger) throw new Error(`unsupported target language for merge: ${language}`)
-  return merger({ workspace, depGraph, scc, order, generatedCodeMap, outputDir })
+  return merger({ workspace, callGraph, typeGraph, scc, order, generatedCodeMap, outputDir })
 }
 
 // ── Shared helpers ──────────────────────────────────────────
@@ -46,7 +48,8 @@ export function sortedObjectNames(workspace: Workspace, ids: string[]): string[]
 
 export function resolveImports(
   workspace: Workspace,
-  depGraph: DirectedGraph,
+  callGraph: DirectedGraph,
+  typeGraph: DirectedGraph,
   scc: SCCResult,
   ids: string[],
   currentComp: number,
@@ -57,7 +60,11 @@ export function resolveImports(
   const importMap = new Map<string, Set<string>>()
 
   for (const id of ids) {
-    for (const depId of depGraph.outNeighbors(id)) {
+    const depIds = new Set<string>()
+    for (const neighbor of callGraph.outNeighbors(id)) depIds.add(neighbor)
+    for (const neighbor of typeGraph.outNeighbors(id)) depIds.add(neighbor)
+
+    for (const depId of depIds) {
       if (depId.startsWith(BUILTIN_ID_PREFIX)) continue
       const depComp = scc.getComp(depId)
       if (depComp === undefined || depComp === currentComp) continue

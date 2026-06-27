@@ -5,7 +5,8 @@ import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs } from '../src/parse/index.js'
 import { Workspace } from '../src/workspace/index.js'
 import {
-  buildDependencyGraph,
+  buildDependencyGraphs,
+  combineGraphs,
   computeSCC,
   condensationGraph,
   SCCResult,
@@ -128,7 +129,8 @@ describe('topologicalSort', () => {
 
 describe('compileEntryPoint', () => {
   let workspace: Workspace
-  let depGraph: DirectedGraph
+  let typeGraph: DirectedGraph
+  let callGraph: DirectedGraph
   let scc: SCCResult
   let cg: DirectedGraph
   let cacheDir: string
@@ -138,7 +140,10 @@ describe('compileEntryPoint', () => {
 
   beforeAll(() => {
     workspace = new Workspace(loadSpexSpecs(specsDir))
-    depGraph = buildDependencyGraph(workspace)
+    const graphs = buildDependencyGraphs(workspace)
+    typeGraph = graphs.typeGraph
+    callGraph = graphs.callGraph
+    const depGraph = combineGraphs(typeGraph, callGraph)
     scc = computeSCC(depGraph)
     cg = condensationGraph(depGraph, scc)
     cacheDir = mkdtempSync(join(tmpdir(), 'synthia-compile-'))
@@ -156,7 +161,8 @@ describe('compileEntryPoint', () => {
 
     const result = await compileEntryPoint(
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       cg,
       entryPoint!,
@@ -183,7 +189,8 @@ describe('compileEntryPoint', () => {
 
     const first = await compileEntryPoint(
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       cg,
       entryPoint,
@@ -193,7 +200,8 @@ describe('compileEntryPoint', () => {
     )
     const second = await compileEntryPoint(
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       cg,
       entryPoint,
@@ -210,7 +218,8 @@ describe('compileEntryPoint', () => {
 
     const first = await compileEntryPoint(
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       cg,
       entryPoint,
@@ -224,7 +233,8 @@ describe('compileEntryPoint', () => {
 
     const second = await compileEntryPoint(
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       cg,
       entryPoint,
@@ -244,7 +254,8 @@ describe('compileEntryPoint', () => {
 
     const result = await compileEntryPoint(
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       cg,
       fakeEntry,

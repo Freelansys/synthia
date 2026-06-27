@@ -7,7 +7,8 @@ import { topologicalSort as dagTopologicalSort } from 'graphology-dag'
 import { type ObjectDeclaration, type ObjectExpression, type SpexFile } from 'spex-parser'
 import { Workspace, BUILTIN_ID_PREFIX, BUILTIN_NAMESPACE } from '../src/workspace/index.js'
 import {
-  buildDependencyGraph,
+  buildDependencyGraphs,
+  combineGraphs,
   computeSCC,
   condensationGraph,
   type SCCResult,
@@ -102,9 +103,9 @@ describe('sortedObjectNames', () => {
 
 describe('resolveImports', () => {
   let ws: Workspace
-  let depGraph: DirectedGraph
+  let typeGraph: DirectedGraph
+  let callGraph: DirectedGraph
   let scc: SCCResult
-  let cg: DirectedGraph
 
   beforeAll(() => {
     ws = new Workspace([
@@ -114,9 +115,11 @@ describe('resolveImports', () => {
         makeSpec('A', { child: 'B' }),
       ]),
     ])
-    depGraph = buildDependencyGraph(ws)
+    const graphs = buildDependencyGraphs(ws)
+    typeGraph = graphs.typeGraph
+    callGraph = graphs.callGraph
+    const depGraph = combineGraphs(typeGraph, callGraph)
     scc = computeSCC(depGraph)
-    cg = condensationGraph(depGraph, scc)
   })
 
   it('resolves imports between different SCCs', () => {
@@ -132,7 +135,17 @@ describe('resolveImports', () => {
     compToBaseName.set(compB, 'B')
     compToBaseName.set(compC, 'C')
 
-    const imports = resolveImports(ws, depGraph, scc, [aId], compA, compToBaseName, '/out', '/out')
+    const imports = resolveImports(
+      ws,
+      callGraph,
+      typeGraph,
+      scc,
+      [aId],
+      compA,
+      compToBaseName,
+      '/out',
+      '/out'
+    )
 
     expect(imports.has('./B')).toBe(true)
     expect(imports.get('./B')).toEqual(new Set(['B']))
@@ -146,24 +159,39 @@ describe('resolveImports', () => {
     const compToBaseName = new Map<number, string>()
     compToBaseName.set(comp, 'B')
 
-    const imports = resolveImports(ws, depGraph, scc, [bId], comp, compToBaseName, '/out', '/out')
+    const imports = resolveImports(
+      ws,
+      callGraph,
+      typeGraph,
+      scc,
+      [bId],
+      comp,
+      compToBaseName,
+      '/out',
+      '/out'
+    )
     expect(imports.size).toBe(0)
   })
 
   it('skips built-in dependencies', () => {
     const builtinId = `spex://${BUILTIN_NAMESPACE}::string`
-    const graph = new DirectedGraph({ allowSelfLoops: false })
-    graph.addNode(builtinId)
-    graph.addNode('file://spec.spex::Foo')
-    graph.addEdge('file://spec.spex::Foo', builtinId)
-    const localScc = computeSCC(graph)
+    const typeG = new DirectedGraph({ allowSelfLoops: false })
+    const callG = new DirectedGraph({ allowSelfLoops: false })
+    typeG.addNode(builtinId)
+    typeG.addNode('file://spec.spex::Foo')
+    callG.addNode(builtinId)
+    callG.addNode('file://spec.spex::Foo')
+    typeG.addEdge('file://spec.spex::Foo', builtinId)
+    const depG = combineGraphs(typeG, callG)
+    const localScc = computeSCC(depG)
 
     const compFoo = localScc.getComp('file://spec.spex::Foo')!
     const compToBaseName = new Map()
 
     const imports = resolveImports(
       new Workspace([]),
-      graph,
+      callG,
+      typeG,
       localScc,
       ['file://spec.spex::Foo'],
       compFoo,
@@ -181,6 +209,7 @@ describe('mergeGeneratedCode dispatcher', () => {
       mergeGeneratedCode(
         new Workspace([]),
         new DirectedGraph({ allowSelfLoops: false }),
+        new DirectedGraph({ allowSelfLoops: false }),
         computeSCC(new DirectedGraph({ allowSelfLoops: false })),
         [],
         new Map(),
@@ -193,14 +222,7 @@ describe('mergeGeneratedCode dispatcher', () => {
 
 // ── End-to-end merge tests ─────────────────────────────────
 
-function setupMergeScenario(entryName = 'A'): {
-  workspace: Workspace
-  depGraph: DirectedGraph
-  scc: SCCResult
-  order: string[]
-  generatedCodeMap: Map<string, string>
-  outputDir: string
-} {
+function setupMergeScenario(entryName = 'A') {
   const decls: ObjectDeclaration[] = [
     makeSpec('C', { val: 'string' }),
     makeSpec('B', { child: 'C' }),
@@ -212,14 +234,15 @@ function setupMergeScenario(entryName = 'A'): {
   }
 
   const ws = new Workspace([makeSpecFile('/spec/test.spex', decls)])
-  const dg = buildDependencyGraph(ws)
-  const sc = computeSCC(dg)
-  const cg = condensationGraph(dg, sc)
+  const { typeGraph, callGraph } = buildDependencyGraphs(ws)
+  const depGraph = combineGraphs(typeGraph, callGraph)
+  const sc = computeSCC(depGraph)
+  const condensed = condensationGraph(depGraph, sc)
 
   const entry = entryPoint(entryName, '/spec/test.spex')
   const entryId = ws.resolveName(entry.declaration.name, entry.filePath)!
   const rootComp = sc.getComp(entryId)!
-  const subgraph = extractSubgraph(cg, rootComp)
+  const subgraph = extractSubgraph(condensed, rootComp)
   const order = topologicalSort(subgraph)
 
   const generatedCodeMap = new Map<string, string>()
@@ -230,7 +253,15 @@ function setupMergeScenario(entryName = 'A'): {
 
   const outDir = mkdtempSync(resolve(tmpdir(), 'synthia-merge-'))
 
-  return { workspace: ws, depGraph: dg, scc: sc, order, generatedCodeMap, outputDir: outDir }
+  return {
+    workspace: ws,
+    callGraph,
+    typeGraph,
+    scc: sc,
+    order,
+    generatedCodeMap,
+    outputDir: outDir,
+  }
 }
 
 describe('typescriptMerge', () => {
@@ -277,13 +308,14 @@ describe('typescriptMerge', () => {
   })
 
   it('writes TODO stubs for missing generated code', () => {
-    const { workspace, depGraph, scc, outputDir } = scenario
+    const { workspace, callGraph, typeGraph, scc, outputDir } = scenario
     const order = scenario.order
 
     const emptyMap = new Map<string, string>()
     const files = typescriptMerge({
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       order,
       generatedCodeMap: emptyMap,
@@ -350,11 +382,12 @@ describe('pythonMerge', () => {
   })
 
   it('writes TODO stubs with Python comment syntax', () => {
-    const { workspace, depGraph, scc, outputDir } = scenario
+    const { workspace, callGraph, typeGraph, scc, outputDir } = scenario
     const emptyMap = new Map<string, string>()
     const files = pythonMerge({
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       order: scenario.order,
       generatedCodeMap: emptyMap,

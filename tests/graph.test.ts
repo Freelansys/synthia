@@ -5,7 +5,8 @@ import { DirectedGraph } from 'graphology'
 import { loadSpexSpecs, loadSpexSpecsRecursive } from '../src/parse/index.js'
 import { Workspace, objectId, builtinId } from '../src/workspace/index.js'
 import {
-  buildDependencyGraph,
+  buildDependencyGraphs,
+  combineGraphs,
   computeSCC,
   condensationGraph,
   SCCResult,
@@ -18,41 +19,56 @@ const propsDir = resolve(__dirname, 'props')
 const specsDir = resolve(propsDir, 'specs')
 const importsDir = resolve(propsDir, 'imports')
 
-describe('buildDependencyGraph', () => {
+describe('buildDependencyGraphs', () => {
   let workspace: Workspace
-  let graph: DirectedGraph
+  let typeGraph: DirectedGraph
+  let callGraph: DirectedGraph
 
   beforeAll(() => {
     workspace = new Workspace(loadSpexSpecs(specsDir))
-    graph = buildDependencyGraph(workspace)
+    const graphs = buildDependencyGraphs(workspace)
+    typeGraph = graphs.typeGraph
+    callGraph = graphs.callGraph
   })
 
-  it('includes all workspace objects as nodes', () => {
-    expect(graph.order).toBe(workspace.objects.size)
+  it('includes all workspace objects as nodes in both graphs', () => {
+    expect(typeGraph.order).toBe(workspace.objects.size)
+    expect(callGraph.order).toBe(workspace.objects.size)
   })
 
-  it('creates edges for NamedObject references', () => {
+  it('creates NamedObject edges in the type graph', () => {
     const addTodoId = objectId(resolve(specsDir, 'model.spex'), 'AddTodo')
     const todoId = objectId(resolve(specsDir, 'model.spex'), 'Todo')
 
-    expect(graph.hasEdge(addTodoId, todoId)).toBe(true)
+    expect(typeGraph.hasEdge(addTodoId, todoId)).toBe(true)
   })
 
-  it('does not create self-loop edges', () => {
+  it('does not put NamedObject refs in the call graph', () => {
+    const addTodoId = objectId(resolve(specsDir, 'model.spex'), 'AddTodo')
+    const todoId = objectId(resolve(specsDir, 'model.spex'), 'Todo')
+
+    expect(callGraph.hasEdge(addTodoId, todoId)).toBe(false)
+  })
+
+  it('does not create self-loop edges in either graph', () => {
     for (const [id] of workspace.allObjects()) {
-      expect(graph.hasEdge(id, id)).toBe(false)
+      expect(typeGraph.hasEdge(id, id)).toBe(false)
+      expect(callGraph.hasEdge(id, id)).toBe(false)
     }
   })
 
-  it('creates no outgoing edges for objects with no deps', () => {
-    expect(graph.outDegree(builtinId('string'))).toBe(0)
-    expect(graph.outDegree(builtinId('number'))).toBe(0)
+  it('creates no outgoing edges for builtins in either graph', () => {
+    expect(typeGraph.outDegree(builtinId('string'))).toBe(0)
+    expect(typeGraph.outDegree(builtinId('number'))).toBe(0)
+    expect(callGraph.outDegree(builtinId('string'))).toBe(0)
+    expect(callGraph.outDegree(builtinId('number'))).toBe(0)
   })
 })
 
-describe('buildDependencyGraph from imports', () => {
+describe('buildDependencyGraphs from imports', () => {
   let workspace: Workspace
-  let graph: DirectedGraph
+  let typeGraph: DirectedGraph
+  let callGraph: DirectedGraph
   let signUpId: string
   let emailId: string
   let passwordId: string
@@ -60,37 +76,49 @@ describe('buildDependencyGraph from imports', () => {
 
   beforeAll(() => {
     workspace = new Workspace(loadSpexSpecsRecursive(importsDir))
-    graph = buildDependencyGraph(workspace)
+    const graphs = buildDependencyGraphs(workspace)
+    typeGraph = graphs.typeGraph
+    callGraph = graphs.callGraph
     signUpId = objectId(resolve(importsDir, 'main.spex'), 'SignUp')
     emailId = objectId(resolve(importsDir, 'types.spex'), 'EmailAddress')
     passwordId = objectId(resolve(importsDir, 'types.spex'), 'Password')
     stringId = builtinId('string')
   })
 
-  it('includes all objects from imported files as nodes', () => {
-    expect(graph.hasNode(signUpId)).toBe(true)
-    expect(graph.hasNode(emailId)).toBe(true)
-    expect(graph.hasNode(passwordId)).toBe(true)
-    expect(graph.order).toBe(workspace.objects.size)
+  it('includes all objects from imported files as nodes in both graphs', () => {
+    expect(typeGraph.hasNode(signUpId)).toBe(true)
+    expect(typeGraph.hasNode(emailId)).toBe(true)
+    expect(typeGraph.hasNode(passwordId)).toBe(true)
+    expect(typeGraph.order).toBe(workspace.objects.size)
+    expect(callGraph.hasNode(signUpId)).toBe(true)
+    expect(callGraph.hasNode(emailId)).toBe(true)
+    expect(callGraph.hasNode(passwordId)).toBe(true)
+    expect(callGraph.order).toBe(workspace.objects.size)
   })
 
-  it('creates edges for cross-file references', () => {
-    expect(graph.hasEdge(signUpId, emailId)).toBe(true)
-    expect(graph.hasEdge(signUpId, passwordId)).toBe(true)
+  it('creates edges for cross-file type references in type graph', () => {
+    expect(typeGraph.hasEdge(signUpId, emailId)).toBe(true)
+    expect(typeGraph.hasEdge(signUpId, passwordId)).toBe(true)
   })
 
-  it('creates edges to built-in types from imported files', () => {
-    expect(graph.hasEdge(emailId, stringId)).toBe(true)
-    expect(graph.hasEdge(passwordId, stringId)).toBe(true)
+  it('does not put cross-file NamedObject refs in call graph', () => {
+    expect(callGraph.hasEdge(signUpId, emailId)).toBe(false)
+    expect(callGraph.hasEdge(signUpId, passwordId)).toBe(false)
   })
 
-  it('resolves names within file scope first', () => {
-    expect(graph.hasEdge(signUpId, stringId)).toBe(true)
+  it('creates edges to built-in types from imported files in type graph', () => {
+    expect(typeGraph.hasEdge(emailId, stringId)).toBe(true)
+    expect(typeGraph.hasEdge(passwordId, stringId)).toBe(true)
   })
 
-  it('does not create self-loop edges for imports workspace', () => {
+  it('resolves names within file scope first in type graph', () => {
+    expect(typeGraph.hasEdge(signUpId, stringId)).toBe(true)
+  })
+
+  it('does not create self-loop edges in either graph', () => {
     for (const [id] of workspace.allObjects()) {
-      expect(graph.hasEdge(id, id)).toBe(false)
+      expect(typeGraph.hasEdge(id, id)).toBe(false)
+      expect(callGraph.hasEdge(id, id)).toBe(false)
     }
   })
 })
@@ -101,7 +129,8 @@ describe('computeSCC', () => {
 
   beforeAll(() => {
     const workspace = new Workspace(loadSpexSpecsRecursive(importsDir))
-    importsGraph = buildDependencyGraph(workspace)
+    const { typeGraph, callGraph } = buildDependencyGraphs(workspace)
+    importsGraph = combineGraphs(typeGraph, callGraph)
     importsSCC = computeSCC(importsGraph)
   })
 
@@ -151,7 +180,8 @@ describe('condensationGraph', () => {
 
   beforeAll(() => {
     const workspace = new Workspace(loadSpexSpecsRecursive(importsDir))
-    const graph = buildDependencyGraph(workspace)
+    const { typeGraph, callGraph } = buildDependencyGraphs(workspace)
+    const graph = combineGraphs(typeGraph, callGraph)
     const scc = computeSCC(graph)
     importsCG = condensationGraph(graph, scc)
   })

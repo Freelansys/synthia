@@ -4,61 +4,99 @@ import { DirectedGraph } from 'graphology'
 import { stronglyConnectedComponents } from 'graphology-components'
 import { logger } from '../logger.js'
 
-function collectExpressionRefs(expr: ObjectExpression, refs: string[]): void {
+function collectExpressionRefs(
+  expr: ObjectExpression,
+  typeRefs: string[],
+  callRefs: string[]
+): void {
   switch (expr.kind) {
     case 'NamedObject':
-      refs.push(expr.name)
+      typeRefs.push(expr.name)
       break
     case 'ProductObject':
       for (const field of Object.values(expr.fields)) {
-        collectExpressionRefs(field, refs)
+        collectExpressionRefs(field, typeRefs, callRefs)
       }
       break
     case 'ExponentialObject':
-      collectExpressionRefs(expr.base, refs)
-      collectExpressionRefs(expr.exponent, refs)
+      collectExpressionRefs(expr.base, typeRefs, callRefs)
+      collectExpressionRefs(expr.exponent, typeRefs, callRefs)
       break
     case 'SubObject':
-      collectExpressionRefs(expr.base, refs)
+      collectExpressionRefs(expr.base, typeRefs, callRefs)
       for (const part of expr.constraint.parts) {
         if (part.kind === 'ConstraintReference') {
-          refs.push(part.name)
+          callRefs.push(part.name)
         }
       }
       break
     case 'ArrayObject':
-      collectExpressionRefs(expr.base, refs)
+      collectExpressionRefs(expr.base, typeRefs, callRefs)
       break
   }
 }
 
-export function buildDependencyGraph(workspace: Workspace) {
-  const graph = new DirectedGraph({ allowSelfLoops: false })
+export function buildDependencyGraphs(workspace: Workspace) {
+  const typeGraph = new DirectedGraph({ allowSelfLoops: false })
+  const callGraph = new DirectedGraph({ allowSelfLoops: false })
 
   for (const [id] of workspace.allObjects()) {
-    graph.addNode(id)
+    typeGraph.addNode(id)
+    callGraph.addNode(id)
   }
 
-  let edgeCount = 0
+  let typeEdgeCount = 0
+  let callEdgeCount = 0
   for (const [sourceId, decl] of workspace.allObjects()) {
-    const refs: string[] = []
-    collectExpressionRefs(decl.object, refs)
+    const typeRefs: string[] = []
+    const callRefs: string[] = []
+    collectExpressionRefs(decl.object, typeRefs, callRefs)
 
     const filePath = sourceId.startsWith('file://') ? sourceId.slice(7).split('::')[0] : undefined
 
-    const seen = new Set<string>()
-    for (const name of refs) {
+    const seenType = new Set<string>()
+    for (const name of typeRefs) {
       const targetId = workspace.resolveName(name, filePath)
-      if (targetId && targetId !== sourceId && !seen.has(targetId)) {
-        seen.add(targetId)
-        graph.addEdge(sourceId, targetId)
-        edgeCount++
+      if (targetId && targetId !== sourceId && !seenType.has(targetId)) {
+        seenType.add(targetId)
+        typeGraph.addEdge(sourceId, targetId)
+        typeEdgeCount++
+      }
+    }
+
+    const seenCall = new Set<string>()
+    for (const name of callRefs) {
+      const targetId = workspace.resolveName(name, filePath)
+      if (targetId && targetId !== sourceId && !seenCall.has(targetId)) {
+        seenCall.add(targetId)
+        callGraph.addEdge(sourceId, targetId)
+        callEdgeCount++
       }
     }
   }
 
-  logger.info(`dependency graph: ${graph.order} node(s), ${edgeCount} edge(s)`)
-  return graph
+  logger.info(`type graph: ${typeGraph.order} node(s), ${typeEdgeCount} edge(s)`)
+  logger.info(`call graph: ${callGraph.order} node(s), ${callEdgeCount} edge(s)`)
+  return { typeGraph, callGraph }
+}
+
+export function combineGraphs(a: DirectedGraph, b: DirectedGraph): DirectedGraph {
+  const union = new DirectedGraph({ allowSelfLoops: false })
+  for (const node of a.nodes()) {
+    union.addNode(node)
+  }
+  for (const node of b.nodes()) {
+    if (!union.hasNode(node)) union.addNode(node)
+  }
+  for (const entry of a.edgeEntries()) {
+    union.addEdge(entry.source, entry.target)
+  }
+  for (const entry of b.edgeEntries()) {
+    if (!union.hasEdge(entry.source, entry.target)) {
+      union.addEdge(entry.source, entry.target)
+    }
+  }
+  return union
 }
 
 export class SCCResult {

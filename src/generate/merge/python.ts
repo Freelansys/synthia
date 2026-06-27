@@ -4,7 +4,7 @@ import type { MergerParams } from './index.js'
 import { collectBuiltinFiltered, sortedObjectNames, resolveImports } from './index.js'
 
 export function pythonMerge(params: MergerParams): string[] {
-  const { workspace, depGraph, scc, order, generatedCodeMap, outputDir } = params
+  const { workspace, callGraph, typeGraph, scc, order, generatedCodeMap, outputDir } = params
   const ext = '.py'
   const files: string[] = []
   const compToBaseName = new Map<number, string>()
@@ -45,7 +45,8 @@ export function pythonMerge(params: MergerParams): string[] {
 
     const importMap = resolveImports(
       workspace,
-      depGraph,
+      callGraph,
+      typeGraph,
       scc,
       ids,
       comp,

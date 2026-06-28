@@ -36,7 +36,7 @@ function renderExpression(expr: ObjectExpression): string {
           parts.push(`  - @${part.name}`)
         }
       }
-      return `${renderExpression(expr.base)} select {\n${parts.join('\n')}\n}`
+      return `${renderExpression(expr.base)} such that {\n${parts.join('\n')}\n}`
     }
     case 'ArrayObject':
       return `Array<${renderExpression(expr.base)}>`

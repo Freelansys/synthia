@@ -26,7 +26,7 @@ function renderExpression(expr: ObjectExpression): string {
       return `(\n${fields.join(',\n')}\n  )`
     }
     case 'ExponentialObject':
-      return `from ${renderExpression(expr.base)} -> ${renderExpression(expr.exponent)}`
+      return `${renderExpression(expr.base)} -> ${renderExpression(expr.exponent)}`
     case 'SubObject': {
       const parts: string[] = []
       for (const part of expr.constraint.parts) {
@@ -41,6 +41,47 @@ function renderExpression(expr: ObjectExpression): string {
     case 'ArrayObject':
       return `Array<${renderExpression(expr.base)}>`
   }
+}
+
+function renderSubObjectPseudoCode(
+  decl: ObjectDeclaration,
+  workspace?: Workspace,
+  sourceId?: string
+): string {
+  const subObj = decl.object as SubObject
+  const isClassifier = subObj.base.kind !== 'ExponentialObject'
+
+  const filePath = sourceId?.startsWith('file://') ? sourceId.slice(7).split('::')[0] : undefined
+
+  const lines: string[] = []
+
+  if (isClassifier) {
+    const baseType = renderExpression(subObj.base)
+    lines.push(`function is${decl.name}(input: ${baseType}): boolean {`)
+  } else {
+    const expObj = subObj.base as import('spex-parser').ExponentialObject
+    const domain = renderExpression(expObj.base)
+    const codomain = renderExpression(expObj.exponent)
+    lines.push(`function ${decl.name}(input: ${domain}): ${codomain} {`)
+  }
+
+  for (const part of subObj.constraint.parts) {
+    if (part.kind === 'ConstraintText') {
+      lines.push(`  // ${part.text}`)
+    } else if (part.kind === 'ConstraintReference') {
+      const resolvedId = workspace?.resolveName(part.name, filePath)
+      if (resolvedId) {
+        lines.push(`  check(is${part.name}(input))  // @${part.name} constraint`)
+      } else {
+        lines.push(`  // @${part.name}  →  input.${part.name}`)
+      }
+    }
+  }
+
+  lines.push(`  return ...`)
+  lines.push(`}`)
+
+  return lines.join('\n')
 }
 
 function renderDeclaration(decl: ObjectDeclaration): string {
@@ -128,14 +169,7 @@ export function buildUserPrompt(params: BuildPromptParams): string {
     const base = (decl.object as SubObject).base
     const baseRendered = renderExpression(base)
     vars.baseTypeName = baseRendered
-
-    const baseIsAnonymous = base.kind !== 'NamedObject'
-    if (baseIsAnonymous) {
-      vars.typeInstruction =
-        'The base type is defined inline. Generate the function directly with the given signature — do not declare a separate type.'
-    } else {
-      vars.typeInstruction = `Use the named type "${baseRendered}" in the function signature.`
-    }
+    vars.declaration = renderSubObjectPseudoCode(decl, workspace, sourceId)
 
     baseCategory = isClassifierBase(base) ? 'classifier' : 'function'
   }

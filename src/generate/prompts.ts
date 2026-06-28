@@ -1,4 +1,9 @@
-import { type ObjectDeclaration, type ObjectExpression, type SubObject } from 'spex-parser'
+import {
+  type ExponentialObject,
+  type ObjectDeclaration,
+  type ObjectExpression,
+  type SubObject,
+} from 'spex-parser'
 import { renderSystem, renderUser } from './prompts/index.js'
 import { type LLMConfig } from './llm.js'
 import { Workspace, BUILTIN_TYPES } from '../workspace/index.js'
@@ -43,6 +48,35 @@ function renderExpression(expr: ObjectExpression): string {
   }
 }
 
+function flattenParamList(
+  expr: ObjectExpression,
+  workspace?: Workspace,
+  filePath?: string,
+  visited?: Set<string>
+): string | null {
+  const seen = visited ?? new Set<string>()
+
+  switch (expr.kind) {
+    case 'ProductObject':
+      return Object.entries(expr.fields)
+        .map(([key, val]) => `${key}: ${renderExpression(val)}`)
+        .join(', ')
+
+    case 'NamedObject': {
+      if (!workspace) return null
+      const id = workspace.resolveName(expr.name, filePath)
+      if (!id || seen.has(id)) return null
+      seen.add(id)
+      const decl = workspace.getObject(id)
+      if (!decl || decl.object.kind !== 'ProductObject') return null
+      return flattenParamList(decl.object, workspace, filePath, seen)
+    }
+
+    default:
+      return null
+  }
+}
+
 function renderSubObjectPseudoCode(
   decl: ObjectDeclaration,
   workspace?: Workspace,
@@ -59,22 +93,42 @@ function renderSubObjectPseudoCode(
     const baseType = renderExpression(subObj.base)
     lines.push(`function is${decl.name}(input: ${baseType}): boolean {`)
   } else {
-    const expObj = subObj.base as import('spex-parser').ExponentialObject
-    const domain = renderExpression(expObj.base)
-    const codomain = renderExpression(expObj.exponent)
-    lines.push(`function ${decl.name}(input: ${domain}): ${codomain} {`)
+    const expObj = subObj.base as ExponentialObject
+    const domainType = renderExpression(expObj.exponent)
+    const codomainType = renderExpression(expObj.base)
+
+    const flatParams = flattenParamList(expObj.exponent, workspace, filePath)
+    if (flatParams) {
+      lines.push(`function ${decl.name}(${flatParams}): ${codomainType} {`)
+    } else {
+      lines.push(`function ${decl.name}(input: ${domainType}): ${codomainType} {`)
+    }
   }
+
+  let pendingText = ''
+  const refs: Array<{ name: string; resolved: boolean }> = []
 
   for (const part of subObj.constraint.parts) {
     if (part.kind === 'ConstraintText') {
-      lines.push(`  // ${part.text}`)
+      pendingText += part.text
     } else if (part.kind === 'ConstraintReference') {
+      pendingText += `@${part.name}`
       const resolvedId = workspace?.resolveName(part.name, filePath)
-      if (resolvedId) {
-        lines.push(`  check(is${part.name}(input))  // @${part.name} constraint`)
-      } else {
-        lines.push(`  // @${part.name}  →  input.${part.name}`)
-      }
+      refs.push({ name: part.name, resolved: !!resolvedId })
+    }
+  }
+
+  if (pendingText.trim()) {
+    for (const line of pendingText.trim().split('\n')) {
+      lines.push(`  // ${line.trim()}`)
+    }
+  }
+
+  for (const ref of refs) {
+    if (ref.resolved) {
+      lines.push(`  check(is${ref.name}(input))  // @${ref.name}`)
+    } else {
+      lines.push(`  // @${ref.name}  →  input.${ref.name}`)
     }
   }
 

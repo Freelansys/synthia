@@ -1,0 +1,22 @@
+create Document as (
+  title: string,
+  content: string,
+  format: string
+);
+
+create FormattedDocument as from Document select {
+  their @content is free of raw markup
+};
+
+create SummarizedDocument as from Document select {
+  their @content has at most 3 sentences
+};
+
+create ProcessDocument as
+from Document -> string
+select {
+  - when the document is a @FormattedDocument, then print "Formatted document got processed"
+  - when the document is a @SummarizedDocument, then print "Summarized document got processed"
+};
+
+generate ProcessDocument;

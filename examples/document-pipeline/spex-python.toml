@@ -1,0 +1,16 @@
+[target]
+language = "python"
+runtime = "python3"
+
+[llm]
+provider = "lmstudio"
+baseURL = "http://10.10.10.2:1234/v1"
+model = "qwen3.6-35b-a3b-mlx"
+temperature = 0.7
+
+[architecture]
+style = "clean"
+
+[workspace]
+spec_dir = "./spec"
+output_dir = "./output-python"

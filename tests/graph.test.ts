@@ -124,7 +124,7 @@ describe('buildDependencyGraphs from imports', () => {
 })
 
 describe('buildDependencyGraphs @ref resolution', () => {
-  it('throws on unresolved @reference', () => {
+  it('treats unresolvable @reference as base field reference (no error)', () => {
     const spec = {
       filePath: '/test/spec.spex',
       ast: {
@@ -147,9 +147,9 @@ describe('buildDependencyGraphs @ref resolution', () => {
     }
 
     const workspace = new Workspace([spec])
-    expect(() => buildDependencyGraphs(workspace)).toThrow(
-      'unresolved @reference "NonExistentRef" in "Foo"'
-    )
+    const { typeGraph, callGraph } = buildDependencyGraphs(workspace)
+    expect(callGraph.hasNode(objectId('/test/spec.spex', 'Foo'))).toBe(true)
+    expect(callGraph.outDegree(objectId('/test/spec.spex', 'Foo'))).toBe(0)
   })
 
   it('does not throw on resolved @reference', () => {

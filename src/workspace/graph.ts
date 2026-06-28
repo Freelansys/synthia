@@ -1,8 +1,66 @@
-import { type ObjectExpression } from 'spex-parser'
-import { Workspace } from './index.js'
+import { type ObjectDeclaration, type ObjectExpression } from 'spex-parser'
+import { Workspace, builtinId } from './index.js'
 import { DirectedGraph } from 'graphology'
 import { stronglyConnectedComponents } from 'graphology-components'
 import { logger } from '../logger.js'
+
+function resolveExpressionFields(
+  expr: ObjectExpression,
+  workspace: Workspace,
+  filePath?: string,
+  visited?: Set<string>
+): Record<string, ObjectExpression> | null {
+  const seen = visited ?? new Set<string>()
+
+  switch (expr.kind) {
+    case 'ProductObject':
+      return expr.fields
+
+    case 'NamedObject': {
+      const id = workspace.resolveName(expr.name, filePath) ?? builtinId(expr.name)
+      if (!id || seen.has(id)) return null
+      seen.add(id)
+      const decl = workspace.getObject(id)
+      if (!decl) return null
+      return resolveExpressionFields(decl.object, workspace, filePath, seen)
+    }
+
+    case 'ExponentialObject': {
+      const domainFields = resolveExpressionFields(expr.base, workspace, filePath, seen)
+      const codomainFields = resolveExpressionFields(expr.exponent, workspace, filePath, seen)
+      if (!domainFields && !codomainFields) return null
+      return { ...(domainFields ?? {}), ...(codomainFields ?? {}) }
+    }
+
+    case 'SubObject':
+      return resolveExpressionFields(expr.base, workspace, filePath, seen)
+
+    case 'ArrayObject':
+      return resolveExpressionFields(expr.base, workspace, filePath, seen)
+  }
+}
+
+function resolveFieldRef(
+  refName: string,
+  baseExpr: ObjectExpression,
+  workspace: Workspace,
+  filePath?: string
+): boolean {
+  const segments = refName.split('.')
+  let fields = resolveExpressionFields(baseExpr, workspace, filePath)
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i] as string
+    if (!fields) return false
+    const fieldExpr = fields[segment]
+    if (!fieldExpr) return false
+    if (i < segments.length - 1) {
+      fields = resolveExpressionFields(fieldExpr, workspace, filePath)
+    }
+  }
+
+  return true
+}
 
 function collectExpressionRefs(
   expr: ObjectExpression,
@@ -65,18 +123,21 @@ export function buildDependencyGraphs(workspace: Workspace) {
     }
 
     const seenCall = new Set<string>()
+    const baseExpr = decl.object.kind === 'SubObject' ? decl.object.base : undefined
+
     for (const name of callRefs) {
       const targetId = workspace.resolveName(name, filePath)
-      if (!targetId) {
-        logger.debug(
-          `unresolved @reference "${name}" in "${sourceId}" — treating as base field reference`
-        )
-        continue
-      }
-      if (targetId !== sourceId && !seenCall.has(targetId)) {
-        seenCall.add(targetId)
-        callGraph.addEdge(sourceId, targetId)
-        callEdgeCount++
+      if (targetId) {
+        if (targetId !== sourceId && !seenCall.has(targetId)) {
+          seenCall.add(targetId)
+          callGraph.addEdge(sourceId, targetId)
+          callEdgeCount++
+        }
+      } else if (baseExpr && resolveFieldRef(name, baseExpr, workspace, filePath)) {
+        logger.debug(`@reference "${name}" in "${sourceId}" resolved as base field reference`)
+      } else {
+        const objectName = decl.name
+        throw new Error(`unresolved @reference "${name}" in "${objectName}" at ${sourceId}`)
       }
     }
   }

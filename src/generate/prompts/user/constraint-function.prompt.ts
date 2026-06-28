@@ -6,7 +6,6 @@ Generate {{targetLanguage}} code that implements function "{{objectName}}" with 
 {{declaration}}
 
 In the constraint list above:
-- @Name (capitalized) references another declared constraint — ensure the function satisfies that referenced constraint.
-- @name (lowercase) references a field on the input object — use the field's value in the logic.
+- @ref references a property of the input object (e.g., @x.y.z drills into nested members). Resolve each segment as a field lookup on the corresponding type. If the name matches a declared constraint instead, it means the input should satisfy that constraint — check it by invoking the corresponding function.
 - Lines without @ are plain-text instructions — implement them directly.
 `

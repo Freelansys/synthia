@@ -124,7 +124,7 @@ describe('buildDependencyGraphs from imports', () => {
 })
 
 describe('buildDependencyGraphs @ref resolution', () => {
-  it('treats unresolvable @reference as base field reference (no error)', () => {
+  it('throws on unresolvable @reference that is not a base field', () => {
     const spec = {
       filePath: '/test/spec.spex',
       ast: {
@@ -147,9 +147,89 @@ describe('buildDependencyGraphs @ref resolution', () => {
     }
 
     const workspace = new Workspace([spec])
-    const { typeGraph, callGraph } = buildDependencyGraphs(workspace)
-    expect(callGraph.hasNode(objectId('/test/spec.spex', 'Foo'))).toBe(true)
-    expect(callGraph.outDegree(objectId('/test/spec.spex', 'Foo'))).toBe(0)
+    expect(() => buildDependencyGraphs(workspace)).toThrow(
+      'unresolved @reference "NonExistentRef" in "Foo"'
+    )
+  })
+
+  it('resolves @reference as base field when name matches a field of the base type', () => {
+    const spec = {
+      filePath: '/test/spec.spex',
+      ast: {
+        kind: 'SpexFile' as const,
+        declarations: [
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Data',
+            object: {
+              kind: 'ProductObject' as const,
+              fields: { value: { kind: 'NamedObject' as const, name: 'string' } },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Check',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'Data' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintReference' as const, name: 'value' }],
+              },
+            },
+          },
+        ],
+      },
+    }
+
+    const workspace = new Workspace([spec])
+    const { callGraph } = buildDependencyGraphs(workspace)
+    const checkId = objectId('/test/spec.spex', 'Check')
+    expect(callGraph.outDegree(checkId)).toBe(0)
+  })
+
+  it('resolves dotted @reference through nested fields', () => {
+    const spec = {
+      filePath: '/test/spec.spex',
+      ast: {
+        kind: 'SpexFile' as const,
+        declarations: [
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Inner',
+            object: {
+              kind: 'ProductObject' as const,
+              fields: { flag: { kind: 'NamedObject' as const, name: 'bool' } },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Outer',
+            object: {
+              kind: 'ProductObject' as const,
+              fields: { child: { kind: 'NamedObject' as const, name: 'Inner' } },
+            },
+          },
+          {
+            kind: 'ObjectDeclaration' as const,
+            name: 'Checker',
+            object: {
+              kind: 'SubObject' as const,
+              base: { kind: 'NamedObject' as const, name: 'Outer' },
+              constraint: {
+                raw: '',
+                parts: [{ kind: 'ConstraintReference' as const, name: 'child.flag' }],
+              },
+            },
+          },
+        ],
+      },
+    } as any
+
+    const workspace = new Workspace([spec])
+    const { callGraph } = buildDependencyGraphs(workspace)
+    const checkerId = objectId('/test/spec.spex', 'Checker')
+    expect(callGraph.outDegree(checkerId)).toBe(0)
   })
 
   it('does not throw on resolved @reference', () => {
